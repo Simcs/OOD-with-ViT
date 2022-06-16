@@ -1,0 +1,30 @@
+model:
+  name: ViT
+  patch_size: 4
+  dim_head: 512
+  depth: 6
+  n_heads: 8
+  dim_mlp: 512
+  dropout: 0.1
+  emb_dropout: 0.1
+
+dataset:
+  name: OC_CIFAR10
+  root: ./data
+  in_distribution_class_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+  mean: [0.4914, 0.4822, 0.4465]
+  std: [0.2023, 0.1994, 0.2010]
+  img_size: 32
+
+optimizer:
+  name: adam
+  base_lr: 0.0008
+
+train:
+  batch_size: 2048
+  n_epochs: 200
+  scheduler: cosine
+  use_amp: False
+
+eval:
+  batch_size: 100
