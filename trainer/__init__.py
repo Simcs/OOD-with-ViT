@@ -1,1 +1,1 @@
-from .trainer import ViT_OC_CIFAR10_Trainer
+from .vit_oc_cifar10_trainer import ViT_OC_CIFAR10_Trainer

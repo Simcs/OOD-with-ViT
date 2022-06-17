@@ -1,17 +1,9 @@
-# -*- coding: utf-8 -*-
-'''
-Train CIFAR10 with PyTorch and Vision Transformers!
-written by @kentaroy47, @arutema47
-'''
-
-from __future__ import print_function
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
 from ml_collections.config_dict import ConfigDict
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
@@ -19,7 +11,6 @@ from torch.optim import Optimizer
 
 import torchvision.transforms as transforms
 
-from models import *
 from models.vit import ViT
 
 from datasets import OC_CIFAR10
@@ -43,15 +34,16 @@ class ViT_OC_CIFAR10_Trainer:
         if model_name == 'ViT':
             # ViT for cifar10
             model = ViT(
-                image_size = self.config.dataset.img_size,
-                patch_size = self.config.model.patch_size,
-                num_classes = len(self.config.dataset.in_distribution_class_indices),
-                dim = self.config.model.dim_head,
-                depth = self.config.model.depth,
-                heads = self.config.model.n_heads,
-                mlp_dim = self.config.model.dim_mlp,
-                dropout = self.config.model.dropout,
-                emb_dropout = self.config.model.emb_dropout,
+                image_size=self.config.dataset.img_size,
+                patch_size=self.config.model.patch_size,
+                num_classes=len(self.config.dataset.in_distribution_class_indices),
+                dim=self.config.model.dim_head,
+                depth=self.config.model.depth,
+                heads=self.config.model.n_heads,
+                mlp_dim=self.config.model.dim_mlp,
+                dropout=self.config.model.dropout,
+                emb_dropout=self.config.model.emb_dropout,
+                visualize=False,
             )
         else:
             raise NotImplementedError(f'Does not support model {model_name}')\
@@ -150,7 +142,7 @@ class ViT_OC_CIFAR10_Trainer:
             x, y = x.to(self.device), y.to(self.device)
             # Train with amp
             with torch.cuda.amp.autocast(enabled=self.config.train.use_amp):
-                outputs = self.model(x)
+                outputs, _ = self.model(x)
                 loss = self.criterion(outputs, y)
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
@@ -175,7 +167,7 @@ class ViT_OC_CIFAR10_Trainer:
         with torch.no_grad():
             for batch_idx, (x, y) in enumerate(self.testloader):
                 x, y = x.to(self.device), y.to(self.device)
-                outputs = self.model(x)
+                outputs, _ = self.model(x)
                 loss = self.criterion(outputs, y)
 
                 total_test_loss += loss.item()
