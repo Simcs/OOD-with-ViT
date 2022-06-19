@@ -9,7 +9,7 @@ from ml_collections import config_dict
 
 import torch
 
-from trainer import ViT_OC_CIFAR10_Trainer
+from trainer import ViT_OOD_CIFAR10_Trainer
 
 
 def main(config):
@@ -99,7 +99,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(config_file) 
         config = config_dict.ConfigDict(config)
     
-    trainer = ViT_OC_CIFAR10_Trainer(config)
+    trainer = ViT_OOD_CIFAR10_Trainer(config)
         
     if args.resume:
         # Load checkpoint.

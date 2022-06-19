@@ -13,22 +13,22 @@ import torchvision.transforms as transforms
 
 from models.vit import ViT
 
-from datasets import OC_CIFAR10
+from datasets import OOD_CIFAR10
 
 
-class ViT_OC_CIFAR10_Trainer:
+class ViT_OOD_CIFAR10_Trainer:
     
     def __init__(self, config: ConfigDict):
         self.config = config
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = self.create_model()
-        self.trainloader, self.testloader = self.create_dataloader()
-        self.optimizer = self.create_optimizer()
-        self.scheduler = self.create_scheduler()
+        self.model = self._create_model()
+        self.trainloader, self.testloader = self._create_dataloader()
+        self.optimizer = self._create_optimizer()
+        self.scheduler = self._create_scheduler()
         self.scaler = torch.cuda.amp.grad_scaler.GradScaler(enabled=self.config.train.use_amp)
         self.criterion = nn.CrossEntropyLoss()
         
-    def create_model(self) -> nn.Module:    
+    def _create_model(self) -> nn.Module:    
         model_name = self.config.model.name
         
         if model_name == 'ViT':
@@ -55,7 +55,7 @@ class ViT_OC_CIFAR10_Trainer:
             
         return model
 
-    def create_dataloader(self) -> Tuple[DataLoader, DataLoader]:
+    def _create_dataloader(self) -> Tuple[DataLoader, DataLoader]:
         dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
         dataset_root = self.config.dataset.root
         img_size = self.config.dataset.img_size
@@ -76,7 +76,7 @@ class ViT_OC_CIFAR10_Trainer:
         ])
         
         print('==> Preparing data..')
-        trainset = OC_CIFAR10(
+        trainset = OOD_CIFAR10(
             root=dataset_root,
             in_distribution_class_indices=in_distribution_class_indices, 
             train=True, 
@@ -90,7 +90,7 @@ class ViT_OC_CIFAR10_Trainer:
             num_workers=8
         )
 
-        testset = OC_CIFAR10(
+        testset = OOD_CIFAR10(
             root=dataset_root, 
             in_distribution_class_indices=in_distribution_class_indices, 
             train=False, 
@@ -105,7 +105,7 @@ class ViT_OC_CIFAR10_Trainer:
         )
         return trainloader, testloader
     
-    def create_optimizer(self) -> Optimizer:
+    def _create_optimizer(self) -> Optimizer:
         optimizer_name = self.config.optimizer.name
         lr = self.config.optimizer.base_lr
         if optimizer_name == "adam":
@@ -114,7 +114,7 @@ class ViT_OC_CIFAR10_Trainer:
             optimizer = optim.SGD(self.model.parameters(), lr=lr)
         return optimizer
     
-    def create_scheduler(self):
+    def _create_scheduler(self):
         # use cosine or reduce LR on Plateau scheduling
         scheduler_name = self.config.train.scheduler
         if scheduler_name == 'cosine':

@@ -1,1 +1,1 @@
-from .OC_CIFAR10 import OC_CIFAR10
+from .ood_cifar10 import OOD_CIFAR10

@@ -9,7 +9,7 @@ model:
   emb_dropout: 0.1
 
 dataset:
-  name: OC_CIFAR10
+  name: OOD_CIFAR10
   root: ./data
   in_distribution_class_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8]
   mean: [0.4914, 0.4822, 0.4465]
