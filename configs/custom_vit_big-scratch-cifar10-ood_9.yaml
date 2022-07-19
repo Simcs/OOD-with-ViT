@@ -1,5 +1,10 @@
+summary: custom_vit_big-scratch-cifar10-ood_9
 model:
-  name: ViT
+  name: custom-vit-big
+  pretrained: False
+  pretrained_model: null
+  repo: null
+  img_size: 32
   patch_size: 4
   dim_head: 512
   depth: 6
@@ -14,7 +19,6 @@ dataset:
   in_distribution_class_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8]
   mean: [0.4914, 0.4822, 0.4465]
   std: [0.2023, 0.1994, 0.2010]
-  img_size: 32
 
 optimizer:
   name: adam

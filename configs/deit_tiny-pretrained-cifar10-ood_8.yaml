@@ -1,0 +1,34 @@
+summary: deit_tiny-pretrained-cifar10-ood_8
+model:
+  name: deit-tiny
+  pretrained: True
+  pretrained_model: deit_tiny_patch16_224
+  repo: facebookresearch/deit:main
+  img_size: 224
+  patch_size: 16
+  dim_head: 192
+  depth: 12
+  n_heads: 3
+  dim_mlp: 192
+  dropout: 0.1
+  emb_dropout: 0.1
+
+dataset:
+  name: OOD_CIFAR10
+  root: ./data
+  in_distribution_class_indices: [0, 1, 2, 3, 4, 5, 6, 7, 9]
+  mean: [0.4914, 0.4822, 0.4465]
+  std: [0.2023, 0.1994, 0.2010]
+
+optimizer:
+  name: adam
+  base_lr: 0.00005
+
+train:
+  batch_size: 512
+  n_epochs: 50
+  scheduler: cosine
+  use_amp: False
+
+eval:
+  batch_size: 100
