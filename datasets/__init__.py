@@ -1,1 +1,0 @@
-from .ood_cifar10 import OOD_CIFAR10
