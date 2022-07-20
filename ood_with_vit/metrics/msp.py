@@ -6,6 +6,9 @@ import torchvision.transforms as transforms
 
 from ml_collections.config_dict import ConfigDict
 
+from ood_with_vit.utils import compute_logits
+
+
 class MSP:
     """
     Implementation of Maximum Softmax Probability metric.
@@ -20,7 +23,7 @@ class MSP:
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
         dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
-        img_size = self.config.dataset.img_size
+        img_size = self.config.model.img_size
         self.transform_test = transforms.Compose([
             transforms.Resize(img_size),
             transforms.ToTensor(),
@@ -33,9 +36,10 @@ class MSP:
         return: 
         """
         self.model.eval()
-        img = Image.fromarray(img)
-        img = self.transform_test(img).to(self.device)
-        logit, _ = self.model(img.unsqueeze(0))
+        if self.config.model.pretrained:
+            logit = self.model(img.unsqueeze(0))
+        else:
+            logit, _ = self.model(img.unsqueeze(0))
         probs = self.softmax(logit)
         msp, _ = probs.max(1)
         return msp
@@ -44,6 +48,11 @@ class MSP:
         """
         Compute MSP based out-of-distrbution score given a test img.
         """
-        msp = self._compute_statistics(img).item()
-        # print(msp)
-        return -msp
+        # msp = self._compute_statistics(img).item()
+        self.model.eval()
+        with torch.no_grad():
+            img = self.transform_test(Image.fromarray(img)).to(self.device)
+            logits = compute_logits(self.config, self.model, img.unsqueeze(0))
+            probs = self.softmax(logits)
+            msp, _ = probs.max(1)
+        return -msp.item()
