@@ -208,7 +208,7 @@ class ViT(nn.Module):
         x = self.to_latent(x)
         out = self.mlp_head(x)
         
-        return out, attn_weights
+        return out, attn_weights.detach().cpu()
     
     def get_penultimate_features(self, img):
         x = self.to_patch_embedding(img)
@@ -227,4 +227,4 @@ class ViT(nn.Module):
         penultimate = x
         out = self.mlp_head(x)
         
-        return out, penultimate
+        return out, penultimate.detach().cpu()
