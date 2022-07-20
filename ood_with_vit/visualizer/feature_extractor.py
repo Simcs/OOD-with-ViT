@@ -11,7 +11,7 @@ class FeatureExtractor(nn.Module):
                 module.register_forward_hook(self.get_features)
 
     def get_features(self, module, input, output):
-        self.features.append(output.squeeze().detach().cpu().numpy())
+        self.features.append(output.detach().cpu())
         
     def __call__(self, input):
         self.features = []
