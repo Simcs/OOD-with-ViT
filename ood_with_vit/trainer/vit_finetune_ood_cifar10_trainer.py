@@ -10,44 +10,33 @@ from torch.utils.data import DataLoader
 from torch.optim import Optimizer
 
 import torchvision.transforms as transforms
+from torchvision.datasets import CIFAR10
 
-from ood_with_vit.models.vit import ViT
 from ood_with_vit.datasets import OOD_CIFAR10
 from . import OOD_CIFAR10_Trainer
 
-
-class ViT_OOD_CIFAR10_Trainer(OOD_CIFAR10_Trainer):
+class ViT_Finetune_OOD_CIFAR10_Trainer(OOD_CIFAR10_Trainer):
     
     def __init__(self, config: ConfigDict):
         super().__init__(config)
         
     def _create_model(self) -> nn.Module:    
-        model_name = self.config.model.name
-        
-        if model_name == 'custom-vit':
-            # ViT for cifar10
-            model = ViT(
-                image_size=self.config.model.img_size,
-                patch_size=self.config.model.patch_size,
-                num_classes=len(self.config.dataset.in_distribution_class_indices),
-                dim=self.config.model.dim_head,
-                depth=self.config.model.depth,
-                heads=self.config.model.n_heads,
-                mlp_dim=self.config.model.dim_mlp,
-                dropout=self.config.model.dropout,
-                emb_dropout=self.config.model.emb_dropout,
-                visualize=False,
-            )
-        else:
-            raise NotImplementedError(f'Does not support model {model_name}')\
-                
+        repo = self.config.model.repo
+        model_name = self.config.model.pretrained_model
+        model = torch.hub.load(
+            repo_or_dir=repo,
+            model=model_name,
+            pretrained=True,
+        )
+        n_class = len(self.config.dataset.in_distribution_class_indices)
+        model.head = nn.Linear(model.head.in_features, n_class)
         if self.device == 'cuda':
             model = model.to(self.device)
             model = torch.nn.DataParallel(model) # make parallel
             cudnn.benchmark = True
             
         return model
-
+    
     def _create_dataloader(self) -> Tuple[DataLoader, DataLoader]:
         dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
         dataset_root = self.config.dataset.root
@@ -55,8 +44,7 @@ class ViT_OOD_CIFAR10_Trainer(OOD_CIFAR10_Trainer):
         in_distribution_class_indices = self.config.dataset.in_distribution_class_indices
         
         transform_train = transforms.Compose([
-            transforms.RandomCrop(img_size, padding=4),
-            transforms.Resize(img_size),
+            transforms.RandomResizedCrop(img_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(dataset_mean, dataset_std),
@@ -64,6 +52,7 @@ class ViT_OOD_CIFAR10_Trainer(OOD_CIFAR10_Trainer):
 
         transform_test = transforms.Compose([
             transforms.Resize(img_size),
+            transforms.CenterCrop(img_size),
             transforms.ToTensor(),
             transforms.Normalize(dataset_mean, dataset_std),
         ])

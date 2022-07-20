@@ -1,2 +1,3 @@
+from .ood_cifar10_trainer import OOD_CIFAR10_Trainer
 from .vit_ood_cifar10_trainer import ViT_OOD_CIFAR10_Trainer
-from .vit_finetune_cifar10_trainer import ViT_Finetune_CIFAR10_Trainer
+from .vit_finetune_ood_cifar10_trainer import ViT_Finetune_OOD_CIFAR10_Trainer

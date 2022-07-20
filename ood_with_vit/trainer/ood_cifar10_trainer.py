@@ -14,7 +14,7 @@ from torchvision.datasets import CIFAR10
 
 from ood_with_vit.datasets import OOD_CIFAR10
 
-class ViT_Finetune_CIFAR10_Trainer:
+class OOD_CIFAR10_Trainer:
     
     def __init__(self, config: ConfigDict):
         self.config = config
@@ -26,21 +26,8 @@ class ViT_Finetune_CIFAR10_Trainer:
         self.scaler = torch.cuda.amp.grad_scaler.GradScaler(enabled=self.config.train.use_amp)
         self.criterion = nn.CrossEntropyLoss()
         
-    def _create_model(self) -> nn.Module:    
-        model_name = self.config.model.pretrained_model
-        repo = self.config.model.repo
-        model = torch.hub.load(
-            repo_or_dir=repo,
-            model=model_name,
-            pretrained=True,
-            force_reload=True,
-        )
-        if self.device == 'cuda':
-            model = model.to(self.device)
-            model = torch.nn.DataParallel(model) # make parallel
-            cudnn.benchmark = True
-            
-        return model
+    def _create_model(self) -> nn.Module:
+        raise NotImplementedError() 
 
     def _create_dataloader(self) -> Tuple[DataLoader, DataLoader]:
         dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
