@@ -12,6 +12,9 @@ model:
   dim_mlp: 192
   dropout: 0.1
   emb_dropout: 0.1
+  layer_name:
+    penultimate: pre_logits
+    attention: attn_drop
 
 dataset:
   name: OOD_CIFAR10
@@ -26,7 +29,8 @@ optimizer:
 
 train:
   batch_size: 512
-  n_epochs: 50
+  n_epochs: 200
+  log_epoch: 10
   scheduler: cosine
   use_amp: False
 

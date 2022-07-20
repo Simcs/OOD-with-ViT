@@ -27,6 +27,7 @@ optimizer:
 train:
   batch_size: 2048
   n_epochs: 200
+  log_epoch: 10
   scheduler: cosine
   use_amp: False
 
