@@ -12,7 +12,7 @@ import torchvision.transforms as transforms
 from ml_collections.config_dict import ConfigDict
 
 from ood_with_vit.datasets import OOD_CIFAR10
-from ood_with_vit.utils import compute_penultimate_features
+from ood_with_vit.utils import compute_penultimate_features, compute_logits
 
 
 class Mahalanobis:
@@ -35,7 +35,7 @@ class Mahalanobis:
             transforms.Normalize(dataset_mean, dataset_std),
         ])
         
-        self.sample_mean, self.precision = self._compute_statistics()
+        self.sample_means, self.precision = self._compute_statistics()
         
     def _create_dataloader(self) -> DataLoader:
         dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
@@ -78,37 +78,33 @@ class Mahalanobis:
         group_lasso = ShrunkCovariance(assume_centered=False)
         
         with torch.no_grad():
-            n_correct, n_total = 0, 0
-            list_features = [[] for _ in range(self.num_class)]
+            # compute penultimate features of each class
+            class_to_features = [[] for _ in range(self.num_class)]
             for x, y in self.trainloader:
                 x, y = x.to(self.device), y.to(self.device)
-                outputs, penultimate_features = compute_penultimate_features(self.config, self.model, x)
-                
-                _, predicted = outputs.max(1)
-                n_total += y.size(0)
-                n_correct += predicted.eq(y).sum().item()
-                
+                penultimate_features = compute_penultimate_features(self.config, self.model, x)
                 for feature, label in zip(penultimate_features, y):
-                    list_features[label.item()].append(feature.view(1, -1))
+                    class_to_features[label.item()].append(feature.view(1, -1))
                 
-            for i in range(len(list_features)):
-                list_features[i] = torch.cat(list_features[i], dim=0)
+            for i in range(len(class_to_features)):
+                class_to_features[i] = torch.cat(class_to_features[i], dim=0)
                 
-            sample_class_mean = [None] * self.num_class
-            for i, feat in enumerate(list_features):
-                sample_class_mean[i] = torch.mean(feat, dim=0)
+            # compute penultimate feature means of each class
+            sample_means = [None] * self.num_class
+            for i, feat in enumerate(class_to_features):
+                sample_means[i] = torch.mean(feat, dim=0)
             
+            # compute covariance matrix of penultimate features
             X = []
-            for list_feature, cls_mean in zip(list_features, sample_class_mean):
+            for list_feature, cls_mean in zip(class_to_features, sample_means):
                 X.append(list_feature - cls_mean)
             X = torch.cat(X, dim=0).numpy()
             group_lasso.fit(X)
             precision = torch.from_numpy(group_lasso.precision_).float()
                 
             print('covariance norm:', np.linalg.norm(group_lasso.precision_))
-            print(f'accuracy: {n_correct / n_total:.3f} ({n_correct}/{n_total})')
         
-        return sample_class_mean, precision
+        return sample_means, precision
         
     def compute_ood_score(self, img):
         """
@@ -117,15 +113,14 @@ class Mahalanobis:
         self.model.eval()
         with torch.no_grad():
             img = self.transform_test(Image.fromarray(img)).to(self.device)
-            _, feature = compute_penultimate_features(self.config, self.model, img.unsqueeze(0))
+            feature = compute_penultimate_features(self.config, self.model, img.unsqueeze(0))
             
-            gaussian_score = []
-            for i in range(self.num_class):
-                sample_mean = self.sample_mean[i]
+            gaussian_scores = []
+            for sample_mean in self.sample_means:
                 zero_f = feature - sample_mean
                 gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
-                gaussian_score.append(gau_term.view(-1, 1))
-            gaussian_score = torch.cat(gaussian_score, dim=1)
-            mahalobis_distance, _ = gaussian_score.min(dim=1)
+                gaussian_scores.append(gau_term.view(-1, 1))
+            gaussian_scores = torch.cat(gaussian_scores, dim=1)
+            mahalobis_distance, _ = gaussian_scores.min(dim=1)
         
         return mahalobis_distance.item()
