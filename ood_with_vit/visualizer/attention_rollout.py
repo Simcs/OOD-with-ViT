@@ -7,7 +7,7 @@ import numpy as np
 
 class ViTAttentionRollout:
     def __init__(self,
-                 head_fusion: str = 'min',
+                 head_fusion: str = 'max',
                  discard_ratio: float = 0.9):
         self.head_fusion = head_fusion
         self.discard_ratio = discard_ratio
