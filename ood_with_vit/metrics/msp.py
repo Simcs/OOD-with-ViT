@@ -30,20 +30,6 @@ class MSP:
             transforms.Normalize(dataset_mean, dataset_std),
         ])
     
-    def _compute_statistics(self, img):
-        """
-        Compute maximum softmax probabiWlity
-        return: 
-        """
-        self.model.eval()
-        if self.config.model.pretrained:
-            logit = self.model(img.unsqueeze(0))
-        else:
-            logit, _ = self.model(img.unsqueeze(0))
-        probs = self.softmax(logit)
-        msp, _ = probs.max(1)
-        return msp
-        
     def compute_ood_score(self, img):
         """
         Compute MSP based out-of-distrbution score given a test img.
