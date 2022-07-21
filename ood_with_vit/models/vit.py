@@ -201,14 +201,17 @@ class ViT(nn.Module):
         x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
-        x, attn_weights = self.transformer(x)
+        x, _attn_weights = self.transformer(x)
 
         x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
 
         x = self.to_latent(x)
         out = self.mlp_head(x)
         
-        return out, attn_weights.detach().cpu()
+        attn_weights = []
+        for attn in _attn_weights:
+            attn_weights.append(attn.detach().cpu())
+        return out, attn_weights
     
     def get_penultimate_features(self, img):
         x = self.to_patch_embedding(img)
