@@ -41,11 +41,10 @@ def compute_penultimate_features(
             model=model,
             layer_name=config.model.layer_name.penultimate,
         )
-        outputs = feature_extractor(imgs)
+        _ = feature_extractor(imgs)
         penultimate_features = feature_extractor.features[0]
     else:
-        outputs, penultimate_features = model.get_penultimate_features(imgs)
-        # penultimate_features = penultimate_features
+        _, penultimate_features = model.get_penultimate_features(imgs)
     
     return penultimate_features
 
