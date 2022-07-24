@@ -191,6 +191,8 @@ class ViT(nn.Module):
             nn.LayerNorm(dim),
             nn.Linear(dim, num_classes)
         )
+        
+        self.visualize = visualize
 
     def forward(self, img):
         x = self.to_patch_embedding(img)
@@ -208,9 +210,12 @@ class ViT(nn.Module):
         x = self.to_latent(x)
         out = self.mlp_head(x)
         
-        attn_weights = []
-        for attn in _attn_weights:
-            attn_weights.append(attn.detach().cpu())
+        if self.visualize:
+            attn_weights = []
+            for attn in _attn_weights:
+                attn_weights.append(attn.detach().cpu())
+        else:
+            attn_weights = None
         return out, attn_weights
     
     def get_penultimate_features(self, img):
