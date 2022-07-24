@@ -16,6 +16,7 @@ model:
 dataset:
   name: OOD_CIFAR10
   root: ./data
+  n_class: 2
   in_distribution_class_indices: [0, 1]
   mean: [0.4914, 0.4822, 0.4465]
   std: [0.2023, 0.1994, 0.2010]
@@ -23,12 +24,15 @@ dataset:
 optimizer:
   name: adam
   base_lr: 0.0008
+  weight_decay: 0.
+
+scheduler: 
+  name: cosine
 
 train:
   batch_size: 2048
   n_epochs: 200
   log_epoch: 10
-  scheduler: cosine
   use_amp: False
 
 eval:
