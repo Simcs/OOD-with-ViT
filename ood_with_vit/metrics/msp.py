@@ -1,7 +1,11 @@
 
+from typing import List
 from PIL import Image
+import numpy as np
+from tqdm import tqdm
 
 import torch
+from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 
 from ml_collections.config_dict import ConfigDict
@@ -30,11 +34,10 @@ class MSP:
             transforms.Normalize(dataset_mean, dataset_std),
         ])
     
-    def compute_ood_score(self, img):
+    def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
         Compute MSP based out-of-distrbution score given a test img.
         """
-        # msp = self._compute_statistics(img).item()
         self.model.eval()
         with torch.no_grad():
             img = self.transform_test(Image.fromarray(img)).to(self.device)
@@ -42,3 +45,16 @@ class MSP:
             probs = self.softmax(logits)
             msp, _ = probs.max(1)
         return -msp.item()
+    
+    def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
+        self.model.eval()
+        with torch.no_grad():
+            total_msp = []
+            for x, y in tqdm(dataloader):
+                x, y = x.to(self.device), y.to(self.device)
+                logits = compute_logits(self.config, self.model, x)
+                probs = self.softmax(logits)
+                msp, _ = probs.max(dim=1)
+                total_msp.extend(-msp.numpy())
+        
+        return total_msp
