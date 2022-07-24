@@ -9,10 +9,10 @@ from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
 
-from ood_with_vit.datasets import OOD_CIFAR10
+from torchvision.datasets import SVHN
 from . import BaseTrainer
 
-class ViT_Finetune_OOD_CIFAR10_Trainer(BaseTrainer):
+class ViT_Finetune_CIFAR10_Trainer(BaseTrainer):
     
     def __init__(self, config: ConfigDict):
         super().__init__(config)
@@ -38,26 +38,16 @@ class ViT_Finetune_OOD_CIFAR10_Trainer(BaseTrainer):
         dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
         dataset_root = self.config.dataset.root
         img_size = self.config.model.img_size
-        in_distribution_class_indices = self.config.dataset.in_distribution_class_indices
         
+        print('==> Preparing data..')        
         transform_train = transforms.Compose([
             transforms.RandomResizedCrop(img_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(dataset_mean, dataset_std),
         ])
-
-        transform_test = transforms.Compose([
-            transforms.Resize(img_size),
-            transforms.CenterCrop(img_size),
-            transforms.ToTensor(),
-            transforms.Normalize(dataset_mean, dataset_std),
-        ])
-        
-        print('==> Preparing data..')
-        trainset = OOD_CIFAR10(
+        trainset = SVHN(
             root=dataset_root,
-            in_distribution_class_indices=in_distribution_class_indices, 
             train=True, 
             download=True, 
             transform=transform_train
@@ -68,10 +58,15 @@ class ViT_Finetune_OOD_CIFAR10_Trainer(BaseTrainer):
             shuffle=True, 
             num_workers=8
         )
-
-        testset = OOD_CIFAR10(
+        
+        transform_test = transforms.Compose([
+            transforms.Resize(img_size),
+            transforms.CenterCrop(img_size),
+            transforms.ToTensor(),
+            transforms.Normalize(dataset_mean, dataset_std),
+        ])
+        testset = SVHN(
             root=dataset_root, 
-            in_distribution_class_indices=in_distribution_class_indices, 
             train=False, 
             download=True, 
             transform=transform_test

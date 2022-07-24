@@ -5,16 +5,12 @@ from ml_collections.config_dict import ConfigDict
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 from torch.optim import Optimizer
 
-import torchvision.transforms as transforms
-from torchvision.datasets import CIFAR10
+import transformers
 
-from ood_with_vit.datasets import OOD_CIFAR10
-
-class OOD_CIFAR10_Trainer:
+class BaseTrainer:
     
     def __init__(self, config: ConfigDict):
         self.config = config
@@ -25,76 +21,39 @@ class OOD_CIFAR10_Trainer:
         self.scheduler = self._create_scheduler()
         self.scaler = torch.cuda.amp.grad_scaler.GradScaler(enabled=self.config.train.use_amp)
         self.criterion = nn.CrossEntropyLoss()
-        
+    
+    def _create_dataloader(self) -> Tuple[DataLoader, DataLoader]:
+        raise NotImplementedError()
+            
     def _create_model(self) -> nn.Module:
         raise NotImplementedError() 
-
-    def _create_dataloader(self) -> Tuple[DataLoader, DataLoader]:
-        dataset_mean, dataset_std = self.config.dataset.mean, self.config.dataset.std
-        dataset_root = self.config.dataset.root
-        img_size = self.config.model.img_size
-        in_distribution_class_indices = self.config.dataset.in_distribution_class_indices
-        
-        transform_train = transforms.Compose([
-            transforms.RandomResizedCrop(img_size),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(dataset_mean, dataset_std),
-        ])
-
-        transform_test = transforms.Compose([
-            transforms.Resize(img_size),
-            transforms.CenterCrop(img_size),
-            transforms.ToTensor(),
-            transforms.Normalize(dataset_mean, dataset_std),
-        ])
-        
-        print('==> Preparing data..')
-        trainset = OOD_CIFAR10(
-            root=dataset_root,
-            in_distribution_class_indices=in_distribution_class_indices, 
-            train=True, 
-            download=True, 
-            transform=transform_train
-        )
-        trainloader = DataLoader(
-            dataset=trainset, 
-            batch_size=self.config.train.batch_size, 
-            shuffle=True, 
-            num_workers=8
-        )
-
-        testset = OOD_CIFAR10(
-            root=dataset_root, 
-            in_distribution_class_indices=in_distribution_class_indices, 
-            train=False, 
-            download=True, 
-            transform=transform_test
-        )
-        testloader = DataLoader(
-            dataset=testset, 
-            batch_size=self.config.eval.batch_size, 
-            shuffle=False, 
-            num_workers=8
-        )
-        return trainloader, testloader
     
     def _create_optimizer(self) -> Optimizer:
         optimizer_name = self.config.optimizer.name
         lr = self.config.optimizer.base_lr
-        if optimizer_name == "adam":
-            optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        elif optimizer_name == "sgd":
-            optimizer = optim.SGD(self.model.parameters(), lr=lr)
+        weight_decay = self.config.optimizer.weight_decay
+        if optimizer_name == 'adam':
+            optimizer = optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_name == 'adamw':
+            optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_name == 'sgd':
+            optimizer = optim.SGD(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         return optimizer
     
     def _create_scheduler(self):
         # use cosine or reduce LR on Plateau scheduling
-        scheduler_name = self.config.train.scheduler
+        scheduler_name = self.config.scheduler.name
         if scheduler_name == 'cosine':
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 optimizer=self.optimizer, 
                 T_max=self.config.train.n_epochs
+            )
+        elif scheduler_name == 'cosine_with_hard_restarts_with_warmup':
+            scheduler = transformers.get_cosine_with_hard_restarts_schedule_with_warmup(
+                optimizer=self.optimizer,
+                num_warmup_steps=self.config.scheduler.warmup_steps,
+                num_training_steps=self.config.scheduler.num_training_steps,
+                num_cycles=self.config.scheduler.num_cycles,
             )
         else:
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -156,7 +115,10 @@ class OOD_CIFAR10_Trainer:
         return total_test_loss, test_accuracy
     
     def step_scheduler(self, validation_loss):
-        if self.config.train.scheduler == 'cosine':
+        scheduler_name = self.config.scheduler.name
+        if scheduler_name == 'cosine':
+            self.scheduler.step()
+        elif scheduler_name == 'cosine_with_hard_restarts_with_warmup':
             self.scheduler.step()
         else:
             self.scheduler.step(validation_loss)
