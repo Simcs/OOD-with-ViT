@@ -10,13 +10,28 @@ from ml_collections import config_dict
 import torch
 
 from ood_with_vit.trainer import (
-    ViT_OOD_CIFAR10_Trainer, 
+    ViT_Finetune_CIFAR10_Trainer,
+    ViT_Finetune_CIFAR100_Trainer,
     ViT_Finetune_OOD_CIFAR10_Trainer,
+    ViT_OOD_CIFAR10_Trainer, 
 )
 
+datasets = [
+    'CIFAR10',
+    'CIFAR100',
+    'OOD_CIFAR10',
+    'SVHN',
+]
+
 def create_trainer(config):
+    assert config.dataset.name in datasets, 'Error: unsupported dataset!'
     if config.model.pretrained:
-        trainer = ViT_Finetune_OOD_CIFAR10_Trainer(config)
+        if config.dataset.name == 'CIFAR10':
+            trainer = ViT_Finetune_CIFAR10_Trainer(config)
+        elif config.dataset.name == 'CIFAR100':
+            trainer = ViT_Finetune_CIFAR100_Trainer(config)
+        else:
+            trainer = ViT_Finetune_OOD_CIFAR10_Trainer(config)
     else:
         trainer = ViT_OOD_CIFAR10_Trainer(config)
     return trainer
@@ -34,7 +49,7 @@ def main(config, args):
     summary = config.summary
     
     # create log directories
-    log_root = Path('./logs') / model_name
+    log_root = Path(args.log_dir) / model_name / summary
     checkpoint_path = log_root / 'checkpoints'
     checkpoint_path.mkdir(parents=True, exist_ok=True)
     
@@ -45,11 +60,7 @@ def main(config, args):
         name=name,
         config=config,
     )
-    if config.train.scheduler == 'cosine':
-        wandb.config.scheduler = "cosine"
-    else:
-        wandb.config.scheduler = "ReduceLROnPlateau"
-    
+    wandb.config.scheduler = config.scheduler.name
     
     best_acc = 0  # best test accuracy
     start_epoch = 0  # start from epoch 0 or last checkpoint epoch
@@ -76,6 +87,7 @@ def main(config, args):
         
         # save checkpoint per every log epoch.
         if epoch % log_epoch == 0:
+            print('Save checkpoint...')
             state = {
                 'epoch': epoch,
                 'best_acc': best_acc,
@@ -87,7 +99,7 @@ def main(config, args):
             
         # save checkpoint if best accuracy achieved.
         if val_acc > best_acc:
-            print('Save checkpoint...')
+            print('Save best checkpoint...')
             best_acc = val_acc
             state = {
                 'epoch': epoch,
@@ -125,6 +137,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
     parser.add_argument('--config', required=True, type=str, help='config filename')
     parser.add_argument('--resume', action='store_true', help='resume from checkpoint')
+    parser.add_argument('--log_dir', default='logs', type=str, help='training log directory')
     parser.add_argument('--checkpoint', type=str, help='checkpoint path to resume from')
     args = parser.parse_args()
     
