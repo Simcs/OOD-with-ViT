@@ -94,7 +94,7 @@ class Mahalanobis:
         self.model.eval()
         with torch.no_grad():
             total_mahalanobis_distances = []
-            for x, y in dataloader:
+            for x, y in tqdm(dataloader):
                 gaussian_scores = []
                 x, y = x.to(self.device), y.to(self.device)
                 features = compute_penultimate_features(self.config, self.model, x)
