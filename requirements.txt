@@ -1,3 +1,4 @@
+pyyaml
 einops
 ml-collections
 timm
