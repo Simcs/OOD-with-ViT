@@ -1,0 +1,9 @@
+einops
+ml-collections
+timm
+
+opencv-python
+
+git+https://github.com/open-mmlab/mmaction2.git
+--find-links=https://download.openmmlab.com/mmcv/dist/cu113/torch1.10.0/index.html
+mmcv-full
