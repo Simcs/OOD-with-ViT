@@ -13,7 +13,7 @@ model:
   dropout: 0.1
   emb_dropout: 0.1
   layer_name:
-    penultimate: pre_logits
+    penultimate: fc_norm
     attention: attn_drop
 
 dataset:
