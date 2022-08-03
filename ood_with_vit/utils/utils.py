@@ -1,10 +1,11 @@
 from re import L
 import torch
+from torch.utils.data import DataLoader
 
 from ml_collections import ConfigDict
 
 from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
-
+from ood_with_vit.metrics import Metric
 
 def compute_attention_maps(
     config: ConfigDict,
@@ -29,6 +30,7 @@ def compute_attention_maps(
             attention_maps.append(attention_map)
     
     return attention_maps
+
 
 def compute_penultimate_features(
     config: ConfigDict,
@@ -61,3 +63,19 @@ def compute_logits(
         logits, _ = model(imgs)
     logits = logits.detach().cpu()
     return logits
+
+
+def compute_ood_scores(
+    metric: Metric,
+    in_dist_dataloader: DataLoader,
+    out_of_dist_dataloader: DataLoader,
+):
+    test_y, ood_scores = [], []
+    print('processing in-distribution samples...')
+    id_ood_scores = metric.compute_dataset_ood_score(in_dist_dataloader)
+    print('processing out-of-distribution samples...')   
+    ood_ood_scores = metric.compute_dataset_ood_score(out_of_dist_dataloader)
+    test_y = [0 for _ in range(len(id_ood_scores))] + [1 for _ in range(len(ood_ood_scores))]
+    ood_scores = id_ood_scores + ood_ood_scores
+    
+    return test_y, ood_scores, id_ood_scores, ood_ood_scores
