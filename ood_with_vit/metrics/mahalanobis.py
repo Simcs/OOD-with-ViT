@@ -1,4 +1,3 @@
-
 from typing import List, Tuple
 from PIL import Image
 
@@ -8,24 +7,20 @@ from sklearn.covariance import EmpiricalCovariance, ShrunkCovariance
 
 import torch
 from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
 
 from ml_collections.config_dict import ConfigDict
 
-from ood_with_vit.datasets import OOD_CIFAR10
-from ood_with_vit.utils import compute_penultimate_features, compute_logits
+from ood_with_vit.utils import compute_penultimate_features
+from . import Metric
 
-
-class Mahalanobis:
+class Mahalanobis(Metric):
     
-    def __init__(self, 
-                 config: ConfigDict,
-                 model: torch.nn.Module,
-                 id_dataloader: DataLoader):
-        self.config = config
-        self.model = model
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.num_class = config.dataset.n_class
+    def __init__(
+        self, 
+        config: ConfigDict,
+        model: torch.nn.Module,
+        id_dataloader: DataLoader):
+        super().__init__(config, model)
         
         self.trainloader = id_dataloader
         self.sample_means, self.precision = self._compute_statistics()

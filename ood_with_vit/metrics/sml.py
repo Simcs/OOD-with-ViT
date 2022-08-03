@@ -4,28 +4,24 @@ from PIL import Image
 
 import numpy as np
 from tqdm import tqdm
-from sklearn.covariance import EmpiricalCovariance, ShrunkCovariance
 
 import torch
 from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
 
 from ml_collections.config_dict import ConfigDict
 
-from ood_with_vit.datasets import OOD_CIFAR10
-from ood_with_vit.utils import compute_penultimate_features, compute_logits
+from ood_with_vit.utils import compute_logits
+from . import Metric
 
 
-class SML:
+class SML(Metric):
     
-    def __init__(self, 
-                 config: ConfigDict,
-                 model: torch.nn.Module,
-                 id_dataloader: DataLoader):
-        self.config = config
-        self.model = model
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.num_class = config.dataset.n_class
+    def __init__(
+        self, 
+        config: ConfigDict,
+        model: torch.nn.Module,
+        id_dataloader: DataLoader):
+        super().__init__(config, model)
         
         self.trainloader = id_dataloader
         self.max_logit_means, self.max_logit_stds = self._compute_statistics()
