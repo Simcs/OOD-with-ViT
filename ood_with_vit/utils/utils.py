@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
 from re import L
 import torch
 from torch.utils.data import DataLoader
@@ -5,20 +8,20 @@ from torch.utils.data import DataLoader
 from ml_collections import ConfigDict
 
 from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
-from ood_with_vit.metrics import Metric
+
+if TYPE_CHECKING:
+    from ood_with_vit.metrics import Metric
+
 
 def compute_attention_maps(
     config: ConfigDict,
     model: torch.nn.Module,
     imgs: torch.Tensor,
+    feature_extractor: Optional[object] = None,
 ):
     # compute outputs and penultimate features detached and moved to cpu.
     if config.model.pretrained:
-        # use forward hook to get attnetion maps of each layer
-        feature_extractor = FeatureExtractor(
-            model=model,
-            layer_name=config.model.layer_name.attention,
-        )
+        assert feature_extractor is not None, 'feature_extractor must exist'
         _ = feature_extractor(imgs)
         attention_maps = []
         for attention_map in feature_extractor.features:
@@ -36,13 +39,11 @@ def compute_penultimate_features(
     config: ConfigDict,
     model: torch.nn.Module,
     imgs: torch.Tensor,
+    feature_extractor: Optional[object] = None,
 ):
     # compute penultimate features detached and moved to cpu.
     if config.model.pretrained:
-        feature_extractor = FeatureExtractor(
-            model=model,
-            layer_name=config.model.layer_name.penultimate,
-        )
+        assert feature_extractor is not None, 'feature_extractor must exist'
         _ = feature_extractor(imgs)
         penultimate_features = feature_extractor.features[0]
     else:
