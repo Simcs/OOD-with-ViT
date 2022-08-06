@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -11,9 +11,11 @@ from ml_collections.config_dict import ConfigDict
 
 class Metric:
     
-    def __init__(self, 
-                 config: ConfigDict,
-                 model: torch.nn.Module):
+    def __init__(
+        self, 
+        config: ConfigDict,
+        model: torch.nn.Module,
+    ):
         self.config = config
         self.model = model
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'

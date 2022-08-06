@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from PIL import Image
 
 import numpy as np
@@ -19,10 +19,13 @@ class Mahalanobis(Metric):
         self, 
         config: ConfigDict,
         model: torch.nn.Module,
-        id_dataloader: DataLoader):
+        id_dataloader: DataLoader,
+        feature_extractor: Optional[object] = None,
+    ):
         super().__init__(config, model)
         
         self.trainloader = id_dataloader
+        self.feature_extractor = feature_extractor
         self.sample_means, self.precision = self._compute_statistics()
     
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -42,7 +45,12 @@ class Mahalanobis(Metric):
             class_to_features = [[] for _ in range(self.num_class)]
             for x, y in tqdm(self.trainloader):
                 x, y = x.to(self.device), y.to(self.device)
-                penultimate_features = compute_penultimate_features(self.config, self.model, x)
+                penultimate_features = compute_penultimate_features(
+                    config=self.config, 
+                    model=self.model, 
+                    imgs=x,
+                    feature_extractor=self.feature_extractor,
+                )
                 for feature, label in zip(penultimate_features, y):
                     class_to_features[label.item()].append(feature.view(1, -1))
                 
@@ -73,7 +81,13 @@ class Mahalanobis(Metric):
         self.model.eval()
         with torch.no_grad():
             img = self.transform_test(Image.fromarray(img)).to(self.device)
-            feature = compute_penultimate_features(self.config, self.model, img.unsqueeze(0))
+            print(self.feature_extractor)
+            feature = compute_penultimate_features(
+                config=self.config, 
+                model=self.model, 
+                imgs=img.unsqueeze(0),
+                feature_extractor=self.feature_extractor
+            )
             
             gaussian_scores = []
             for sample_mean in self.sample_means:
@@ -92,7 +106,12 @@ class Mahalanobis(Metric):
             for x, y in tqdm(dataloader):
                 gaussian_scores = []
                 x, y = x.to(self.device), y.to(self.device)
-                features = compute_penultimate_features(self.config, self.model, x)
+                features = compute_penultimate_features(
+                    config=self.config, 
+                    model=self.model, 
+                    imgs=x,
+                    feature_extractor=self.feature_extractor
+                )
                 
                 for sample_mean in self.sample_means:
                     zero_f = features - sample_mean
