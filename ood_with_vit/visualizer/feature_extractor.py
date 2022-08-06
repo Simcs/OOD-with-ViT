@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+import torch.nn as nn
 
 class FeatureExtractor(nn.Module):
     def __init__(self, model: nn.Module, layer_name: str):
