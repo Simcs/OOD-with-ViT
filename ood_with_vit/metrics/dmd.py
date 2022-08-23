@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple
 from PIL import Image
 
@@ -10,24 +12,43 @@ from torch.utils.data import DataLoader
 
 from ml_collections.config_dict import ConfigDict
 
-from ood_with_vit.utils import compute_penultimate_features
-from . import Metric
+from ood_with_vit.utils import compute_logits, compute_penultimate_features
+from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
+from . import MaskMetric
 
-class Mahalanobis(Metric):
+
+class DMD(MaskMetric):
+    """
+    Implementation of Difference of Max Logit metric.
+    """
     
     def __init__(
         self, 
         config: ConfigDict,
         model: torch.nn.Module,
         id_dataloader: DataLoader,
-        feature_extractor: Optional[object] = None,
+        feature_extractor: Optional[FeatureExtractor] = None,
+        mask_method: str = 'top_ratio',
+        mask_ratio: float = 0.3,
+        mask_threshold: float = 0.9,
+        head_fusion: str = 'max',
+        discard_ratio: float = 0.9,
     ):
-        super().__init__(config, model)
-        
+        super().__init__(
+            config=config, 
+            model=model, 
+            mask_method=mask_method, 
+            mask_ratio=mask_ratio, 
+            mask_threshold=mask_threshold, 
+            head_fusion=head_fusion, 
+            discard_ratio=discard_ratio,
+        )
+
         self.trainloader = id_dataloader
         self.feature_extractor = feature_extractor
         self.sample_means, self.precision = self._compute_statistics()
-    
+        self.attention_masking.hook()
+
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute sample mean and precision (inverse of covariance)
@@ -69,60 +90,75 @@ class Mahalanobis(Metric):
             X = torch.cat(X, dim=0).numpy()
             group_lasso.fit(X)
             precision = torch.from_numpy(group_lasso.precision_).float()
+                
             print('covariance norm:', np.linalg.norm(group_lasso.precision_))
         
         return sample_means, precision
-        
+
     def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
-        Compute Mahalanobis distance based out-of-distrbution score given a test data.
+        Compute DML based out-of-distrbution score given a test data.
         """
         self.model.eval()
         with torch.no_grad():
+            self.attention_masking.switch_status('normal')
             img = self.transform_test(Image.fromarray(img)).to(self.device)
-            print(self.feature_extractor)
-            feature = compute_penultimate_features(
-                config=self.config, 
-                model=self.model, 
-                imgs=img.unsqueeze(0),
-                feature_extractor=self.feature_extractor
-            )
-            
-            gaussian_scores = []
-            for sample_mean in self.sample_means:
-                zero_f = feature - sample_mean
-                gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
-                gaussian_scores.append(gau_term.view(-1, 1))
-            gaussian_scores = torch.cat(gaussian_scores, dim=1)
-            mahalobis_distance, _ = gaussian_scores.min(dim=1)
-            
-        return mahalobis_distance.item()
+            original_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
+            original_max_logit, original_pred = original_logit.max(dim=1)
+
+            self.attention_masking.switch_status('masking')
+            self.attention_masking.generate_mask(img)
+            masked_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
+            masked_max_logit, masked_pred = masked_logit.max(dim=1)
+
+        original_max_logit, original_pred = original_max_logit.item(), original_pred.item()
+        masked_max_logit, masked_pred = masked_max_logit.item(), masked_pred.item()
+        return original_max_logit - masked_max_logit
     
     def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
         self.model.eval()
-        closest_classes = []
         with torch.no_grad():
-            total_mahalanobis_distances = []
+            total_dmd = []
             for x, y in tqdm(dataloader):
-                gaussian_scores = []
+                original_gaussian_scores = []
                 x, y = x.to(self.device), y.to(self.device)
-                features = compute_penultimate_features(
+                self.attention_masking.disable_masking()
+                original_features = compute_penultimate_features(
                     config=self.config, 
                     model=self.model, 
                     imgs=x,
                     feature_extractor=self.feature_extractor
                 )
-                
+
                 for sample_mean in self.sample_means:
-                    zero_f = features - sample_mean
+                    zero_f = original_features - sample_mean
                     gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
-                    gaussian_scores.append(gau_term.view(-1, 1))
+                    original_gaussian_scores.append(gau_term.view(-1, 1))
             
-                gaussian_scores = torch.cat(gaussian_scores, dim=1)
-                mahalanobis_distances, _ = gaussian_scores.min(dim=1)
-                closest_classes.extend(_.numpy())
-                total_mahalanobis_distances.extend(mahalanobis_distances.numpy())
-            
-        self.closest_classes = closest_classes
-        self.total_mahalanobis_distances = total_mahalanobis_distances
-        return total_mahalanobis_distances
+                original_gaussian_scores = torch.cat(original_gaussian_scores, dim=1)
+                original_mahalanobis_distances, _ = original_gaussian_scores.min(dim=1)
+
+                self.attention_masking.generate_masks(x)
+
+                self.attention_masking.enable_masking()
+                masked_gaussian_scores = []
+                masked_features = compute_penultimate_features(
+                    config=self.config, 
+                    model=self.model, 
+                    imgs=x,
+                    feature_extractor=self.feature_extractor
+                )
+
+                for sample_mean in self.sample_means:
+                    zero_f = masked_features - sample_mean
+                    gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                    masked_gaussian_scores.append(gau_term.view(-1, 1))
+        
+                masked_gaussian_scores = torch.cat(masked_gaussian_scores, dim=1)
+                masked_mahalanobis_distances, _ = masked_gaussian_scores.min(dim=1)
+
+                for original_dist, masked_dist in zip(original_mahalanobis_distances, masked_mahalanobis_distances):
+                    original_dist, masked_dist = original_dist.item(), masked_dist.item()
+                    total_dmd.append(original_dist - masked_dist)
+
+        return total_dmd

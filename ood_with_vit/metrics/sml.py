@@ -21,12 +21,12 @@ class SML(Metric):
         config: ConfigDict,
         model: torch.nn.Module,
         id_dataloader: DataLoader,
-        feature_extractor: Optional[object] = None,
+        # feature_extractor: Optional[object] = None,
     ):
         super().__init__(config, model)
         
         self.trainloader = id_dataloader
-        self.feature_extractor = feature_extractor
+        # self.feature_extractor = feature_extractor
         self.max_logit_means, self.max_logit_stds = self._compute_statistics()
     
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:

@@ -13,7 +13,7 @@ from ml_collections.config_dict import ConfigDict
 from ood_with_vit.utils import compute_penultimate_features
 from . import Metric
 
-class Mahalanobis(Metric):
+class ClasswiseMahalanobis(Metric):
     
     def __init__(
         self, 
@@ -26,7 +26,7 @@ class Mahalanobis(Metric):
         
         self.trainloader = id_dataloader
         self.feature_extractor = feature_extractor
-        self.sample_means, self.precision = self._compute_statistics()
+        self.sample_means, self.precisions = self._compute_statistics()
     
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -35,11 +35,7 @@ class Mahalanobis(Metric):
             sample_class_man:
             precision
         """
-        self.model.eval()
-        
-        # group_lasso = EmpiricalCovariance(assume_centered=False)
-        group_lasso = ShrunkCovariance(assume_centered=False)
-        
+        self.model.eval()        
         with torch.no_grad():
             # compute penultimate features of each class
             class_to_features = [[] for _ in range(self.num_class)]
@@ -61,17 +57,20 @@ class Mahalanobis(Metric):
             sample_means = [None] * self.num_class
             for i, feat in enumerate(class_to_features):
                 sample_means[i] = torch.mean(feat, dim=0)
-            
-            # compute covariance matrix of penultimate features
-            X = []
+
+            # compute covariance matrix of each class
+            precisions = []
             for list_feature, cls_mean in zip(class_to_features, sample_means):
-                X.append(list_feature - cls_mean)
-            X = torch.cat(X, dim=0).numpy()
-            group_lasso.fit(X)
-            precision = torch.from_numpy(group_lasso.precision_).float()
-            print('covariance norm:', np.linalg.norm(group_lasso.precision_))
+                # group_lasso = EmpiricalCovariance(assume_centered=False)
+                group_lasso = ShrunkCovariance(assume_centered=False)
+                X = (list_feature - cls_mean).numpy()
+                group_lasso.fit(X)
+                precision = torch.from_numpy(group_lasso.precision_).float()
+                precisions.append(precision)
+            norms = [np.linalg.norm(precision) for precision in precisions]
+            print('covairance norms:', norms)
         
-        return sample_means, precision
+        return sample_means, precisions
         
     def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
@@ -96,6 +95,7 @@ class Mahalanobis(Metric):
             gaussian_scores = torch.cat(gaussian_scores, dim=1)
             mahalobis_distance, _ = gaussian_scores.min(dim=1)
             
+        
         return mahalobis_distance.item()
     
     def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
@@ -113,16 +113,17 @@ class Mahalanobis(Metric):
                     feature_extractor=self.feature_extractor
                 )
                 
-                for sample_mean in self.sample_means:
+                gaussian_scores = []
+                for sample_mean, prec in zip(self.sample_means, self.precisions):
                     zero_f = features - sample_mean
-                    gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                    gau_term = torch.mm(torch.mm(zero_f, prec), zero_f.t()).diag()
                     gaussian_scores.append(gau_term.view(-1, 1))
-            
                 gaussian_scores = torch.cat(gaussian_scores, dim=1)
                 mahalanobis_distances, _ = gaussian_scores.min(dim=1)
+                # [temp]: compute closest classes for debugging
                 closest_classes.extend(_.numpy())
                 total_mahalanobis_distances.extend(mahalanobis_distances.numpy())
-            
+
         self.closest_classes = closest_classes
         self.total_mahalanobis_distances = total_mahalanobis_distances
         return total_mahalanobis_distances
