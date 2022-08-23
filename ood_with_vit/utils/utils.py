@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
-from re import L
+import random
 import torch
 from torch.utils.data import DataLoader
 
@@ -17,7 +17,7 @@ def compute_attention_maps(
     config: ConfigDict,
     model: torch.nn.Module,
     imgs: torch.Tensor,
-    feature_extractor: Optional[object] = None,
+    feature_extractor: Optional[FeatureExtractor] = None,
 ):
     # compute outputs and penultimate features detached and moved to cpu.
     if config.model.pretrained:
@@ -39,7 +39,7 @@ def compute_penultimate_features(
     config: ConfigDict,
     model: torch.nn.Module,
     imgs: torch.Tensor,
-    feature_extractor: Optional[object] = None,
+    feature_extractor: Optional[FeatureExtractor] = None,
 ):
     # compute penultimate features detached and moved to cpu.
     if config.model.pretrained:
@@ -76,7 +76,11 @@ def compute_ood_scores(
     id_ood_scores = metric.compute_dataset_ood_score(in_dist_dataloader)
     print('processing out-of-distribution samples...')   
     ood_ood_scores = metric.compute_dataset_ood_score(out_of_dist_dataloader)
+
+    min_len = min(len(id_ood_scores), len(ood_ood_scores))
+    id_ood_scores = random.sample(id_ood_scores, min_len)
+    ood_ood_scores = random.sample(ood_ood_scores, min_len)
     test_y = [0 for _ in range(len(id_ood_scores))] + [1 for _ in range(len(ood_ood_scores))]
     ood_scores = id_ood_scores + ood_ood_scores
-    
+
     return test_y, ood_scores, id_ood_scores, ood_ood_scores
