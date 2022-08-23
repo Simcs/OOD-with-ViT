@@ -10,29 +10,29 @@ cifar100_root = dataset_root / 'cifar100'
 cifar100_root.mkdir(parents=True, exist_ok=True)
 
 
-def saveTrainAndTest(pathRoot, dataCls):
-    train_root = pathRoot / 'train'
+def save_train_and_test(path_root, data_cls):
+    train_root = path_root / 'train'
     train_root.mkdir(parents=True, exist_ok=True)
-    saveIntoImg(
+    save_into_img(
         train_root, 
-        dataCls(
+        data_cls(
             root=Path('./data'), 
             train=True, 
             download=False, 
     ))
 
-    test_root = pathRoot / 'test'
+    test_root = path_root / 'test'
     test_root.mkdir(parents=True, exist_ok=True)
-    saveIntoImg(
+    save_into_img(
         test_root, 
-        dataCls(
+        data_cls(
             root=Path('./data'), 
             train=False, 
             download=False, 
     ))
 
 
-def saveIntoImg(pathTo, dataset):
+def save_into_img(pathTo, dataset):
     with open(pathTo / '_class_map.tsv', 'w') as f:
         f.write('idx\timg_filename\ttarget\tlabel_name\n')
         for idx, (img, target) in enumerate(tqdm(dataset)):
@@ -41,56 +41,7 @@ def saveIntoImg(pathTo, dataset):
             label_name = dataset.classes[target]
             f.write(f'{idx}\t{img_filename}\t{target}\t{label_name}\n')
 
-# cifar10 = CIFAR10(
-#     root=dataset_root, 
-#     train=True, 
-#     download=False, 
-# )
-# cifar10 = CIFAR10(
-#     root=dataset_root, 
-#     train=False, 
-#     download=False, 
-# )
 
-# saveTrainAndTest(cifar10_root, CIFAR10)
+save_train_and_test(cifar10_root, CIFAR10)
 
-saveTrainAndTest(cifar100_root, CIFAR100)
-
-# cifar10_train_root = cifar10_root / 'train'
-# cifar10_train_root.mkdir(parents=True, exist_ok=True)
-# cifar10 = CIFAR10(
-#     root=dataset_root, 
-#     train=True, 
-#     download=False, 
-# )
-# with open(cifar10_train_root / '_class_map.tsv', 'w') as f:
-#     f.write('idx\ttarget\tlabel_name\timg_filename\n')
-#     for idx, (img, target) in enumerate(tqdm(cifar10)):
-#         img_filename = f'{idx:05d}.jpg'
-#         img.save(cifar10_train_root / img_filename)
-#         label_name = cifar10.classes[target]
-#         f.write(f'{idx}\t{target}\t{label_name}\t{img_filename}\n')
-
-# cifar10_test_root = cifar10_root / 'test'
-# cifar10_test_root.mkdir(parents=True, exist_ok=True)
-# cifar10 = CIFAR10(
-#     root=dataset_root, 
-#     train=False, 
-#     download=False, 
-# )
-# with open(cifar10_test_root / '_class_map.tsv', 'w') as f:
-#     for idx, (img, target) in enumerate(tqdm(cifar10)):
-#         img_filename = f'{idx:05d}.jpg'
-#         img.save(cifar10_test_root / img_filename)
-#         label_name = cifar10.classes[target]
-#         f.write(f'{idx}\t{target}\t{label_name}\n')
-
-# cifar100 = CIFAR100(
-#     root=dataset_root, 
-#     train=False, 
-#     download=False, 
-# )
-# for idx, (img, target) in enumerate(cifar100):
-#     img_filename = f'{idx:05d}.jpg'
-#     img.save(cifar100_root / img_filename)
-
+save_train_and_test(cifar100_root, CIFAR100)
