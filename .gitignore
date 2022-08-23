@@ -5,6 +5,7 @@ backup/
 data/
 tmp/
 assets/
+result/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
