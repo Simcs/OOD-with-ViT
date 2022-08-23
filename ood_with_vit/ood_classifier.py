@@ -1,7 +1,6 @@
-from typing import List, Tuple
+from typing import Tuple
 from collections import OrderedDict
 from pathlib import Path
-import pandas as pd
 
 import torch
 import torch.nn as nn
