@@ -14,6 +14,8 @@ class ViTAttentionRollout:
         
     def rollout(self, attentions: List[torch.Tensor]):
         result = torch.eye(attentions[0].size(-1)).unsqueeze(0)
+        result = result.repeat((attentions[0].size(0), 1, 1))
+
         with torch.no_grad():
             # attention.size() == [1, num_heads, num_patches + 1, num_patches + 1]
             # fused_attention_heads.size() == [1, num_patches + 1, num_patches + 1]
@@ -32,21 +34,34 @@ class ViTAttentionRollout:
                 # Drop the lowest attentions
                 _, indices = flat.topk(int(flat.size(-1) * self.discard_ratio), dim=-1, largest=False)
                 # Do not drop the class token
-                indices = indices[indices != 0]
-                flat[0, indices] = 0
+                # print('indices:', indices.shape, indices.dtype)
+                # print('flat:', flat.shape, flat.dtype)
+                # indices = indices[indices != 0]
+                indices = [idx[idx != 0] for idx in indices]
+                # print('indices:', indices.shape, indices.dtype)
+                # print([flat[0, i] for i in indices[0][:10]])
+                # flat[0, indices] = 0
+                for i in range(flat.size(0)):
+                    flat[i, indices[i]] = 0
+                # print([flat[0, i] for i in indices[0][:10]])
                 
                 I = torch.eye(fused_attention_heads.size(-1))
                 a = (fused_attention_heads + 1.0 * I) / 2
-                a = a / a.sum(dim=-1)
+                a = a / torch.sum(a, dim=-1, keepdim=True)
+                # print('a:', a.shape)
+                # print('result:', result.shape)
                 
-                result = torch.matmul(a, result)
+                # result.size() == [1, num_patches + 1, num_patches + 1]
+                result = torch.bmm(a, result)
         
         # Look at the total attention between the class token(CLS) and the image patches
         # mask.size() == [num_patches]
-        mask = result[0, 0, 1:]
+        # print('final result:', result.shape)
+        mask = result[:, 0, 1:]
         width = int(mask.size(-1) ** 0.5)
-        mask = mask.reshape(width, width).numpy()
+        mask = mask.reshape(-1, width, width).numpy()
         mask = mask / np.max(mask)
+        # print('mask:', mask.shape)
         return mask
 
     def get_visualized_masks(self, img, mask):
