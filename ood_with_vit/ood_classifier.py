@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 from collections import OrderedDict
 from pathlib import Path
 import pandas as pd
@@ -13,9 +13,11 @@ from torchvision.datasets import CIFAR10, CIFAR100, SVHN
 from ml_collections import ConfigDict
 
 from ood_with_vit.models.vit import ViT
-from ood_with_vit.metrics import MSP, Mahalanobis, SML
+from ood_with_vit.metrics import MSP, Mahalanobis, ClasswiseMahalanobis, SML
+from ood_with_vit.metrics import DCL, DML, DMD, DCMD
 from ood_with_vit.utils import compute_ood_scores
 from ood_with_vit.utils.ood_metrics import auroc, aupr, fpr_at_95_tpr
+from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
 
 
 DATASETS = ['CIFAR10', 'CIFAR100', 'SVHN']
@@ -27,7 +29,8 @@ class Image_OOD_Classifier:
         config: ConfigDict,
         in_dist_dataset_name: str,
         out_of_dist_dataset_name: str,
-        log_dir: str):
+        log_dir: str,
+    ):
 
         assert in_dist_dataset_name != out_of_dist_dataset_name, 'ID and OOD dataset must be different.'
         assert in_dist_dataset_name in DATASETS, f'dataset {in_dist_dataset_name} is not supported.'
@@ -58,20 +61,28 @@ class Image_OOD_Classifier:
         ])
 
         # create model and test dataloaders
-        self.model = self._create_model()
         self.id_test_dataloader, self.ood_test_dataloader = self._create_dataloaders()
     
-    def _create_model(self) -> torch.nn.Module:
+    def _initialize_model(self, finetuned: bool = True) -> torch.nn.Module:
         summary = self.config.summary
         n_class = self.config.dataset.n_class
 
         if self.config.model.pretrained:
-            model = torch.hub.load(
-                repo_or_dir=self.config.model.repo,
-                model=self.config.model.pretrained_model,
-                pretrained=False,
-            )
-            model.head = nn.Linear(model.head.in_features, n_class)
+            if finetuned:
+                print('initialize finetuned model...')
+                model = torch.hub.load(
+                    repo_or_dir=self.config.model.repo,
+                    model=self.config.model.pretrained_model,
+                    pretrained=False,
+                )
+                model.head = nn.Linear(model.head.in_features, n_class)
+            else:
+                print('initialize pretrained-only model...')
+                model = torch.hub.load(
+                    repo_or_dir=self.config.model.repo,
+                    model=self.config.model.pretrained_model,
+                    pretrained=True,
+                )
         else:
             model = ViT(
                 image_size=self.config.model.img_size,
@@ -85,19 +96,19 @@ class Image_OOD_Classifier:
                 emb_dropout=self.config.model.emb_dropout,
                 visualize=True,
             )
-
         model = model.to(device=self.device)
 
-        checkpoint = torch.load(self.checkpoint_path / f'{summary}_best.pt')
+        if finetuned:
+            checkpoint = torch.load(self.checkpoint_path / f'{summary}_best.pt')
 
-        state_dict = checkpoint['model_state_dict']
-        trimmed_keys = []
-        for key in state_dict.keys():
-            # remove prefix 'module.' for each key (in case of DataParallel)
-            trimmed_keys.append(key[7:])
-        trimmed_state_dict = OrderedDict(list(zip(trimmed_keys, state_dict.values())))
+            state_dict = checkpoint['model_state_dict']
+            trimmed_keys = []
+            for key in state_dict.keys():
+                # remove prefix 'module.' for each key (in case of DataParallel)
+                trimmed_keys.append(key[7:])
+            trimmed_state_dict = OrderedDict(list(zip(trimmed_keys, state_dict.values())))
 
-        model.load_state_dict(trimmed_state_dict)
+            model.load_state_dict(trimmed_state_dict)
 
         return model
     
@@ -128,14 +139,14 @@ class Image_OOD_Classifier:
         return dataset
 
     def _create_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
-        id_test_dataset = self._create_dataset(self.in_dist_dataset_name, False)
+        id_test_dataset = self._create_dataset(self.in_dist_dataset_name, train=False)
         id_test_dataloader = DataLoader(
             dataset=id_test_dataset,
             batch_size=self.config.eval.batch_size,
             shuffle=False,
             num_workers=8,
         )
-        ood_test_dataset = self._create_dataset(self.out_of_dist_dataset_name, False)
+        ood_test_dataset = self._create_dataset(self.out_of_dist_dataset_name, train=False)
         ood_test_dataloader = DataLoader(
             dataset=ood_test_dataset,
             batch_size=self.config.eval.batch_size,
@@ -143,54 +154,58 @@ class Image_OOD_Classifier:
             num_workers=8,
         )
         return id_test_dataloader, ood_test_dataloader
-
-    def compute_ood_classification_results(self):
-        id_train_dataset = self._create_dataset(self.in_dist_dataset_name, True)
+    
+    def _init_metric(self, metric_name, **masking_kwargs):
+        id_train_dataset = self._create_dataset(self.in_dist_dataset_name, train=True)
         id_train_dataloader = DataLoader(
             dataset=id_train_dataset,
             batch_size=self.config.train.batch_size,
             shuffle=False,
             num_workers=8,
         )
+        if metric_name == 'MSP':
+            metric = MSP(self.config, self.model)
+        elif metric_name == 'Mahalanobis':
+            metric = Mahalanobis(self.config, self.model, id_train_dataloader, self.feature_extractor)
+        elif metric_name == 'ClasswiseMahalanobis':
+            metric = ClasswiseMahalanobis(self.config, self.model, id_train_dataloader, self.feature_extractor)
+        elif metric_name == 'SML':
+            metric = SML(self.config, self.model, id_train_dataloader)
+        elif metric_name == 'DML':
+            metric = DML(self.config, self.model, **masking_kwargs)
+        elif metric_name == 'DCL':
+            metric = DCL(self.config, self.model, **masking_kwargs)
+        elif metric_name == 'DMD':
+            metric = DMD(self.config, self.model, id_train_dataloader, self.feature_extractor, **masking_kwargs)
+        elif metric_name == 'DCMD':
+            metric = DCMD(self.config, self.model, id_train_dataloader, self.feature_extractor, **masking_kwargs)
+        else:
+            raise NotImplementedError('metric not supported')
+        
+        return metric
 
-        metrics = {
-            'MSP': MSP(self.config, self.model),
-            'Mahalanobis': Mahalanobis(self.config, self.model, id_train_dataloader),
-            'SML': SML(self.config, self.model, id_train_dataloader),
-        }
-
-
-        scores = {}
-        score_list = []
-        for name, metric in metrics.items():
-            print(f'Compute ood scores by {name}')
-            test_y, ood_scores, id_ood_scores, ood_ood_scores = compute_ood_scores(
-                metric=metric,
-                in_dist_dataloader=self.id_test_dataloader,
-                out_of_dist_dataloader=self.ood_test_dataloader,
-            )
-            _, _, auroc_score = auroc(test_y, ood_scores)
-            _, _, aupr_score = aupr(test_y, ood_scores)
-            fpr95 = fpr_at_95_tpr(test_y, ood_scores)
-            scores[name] = {
-                'auroc': auroc_score,
-                'aupr': aupr_score,
-                'fpr_at_95_tpr': fpr95,
-            }
-            score_list.append([auroc_score, aupr_score, fpr95])
-
-        result_df = pd.DataFrame(
-            data=score_list,
-            index=metrics.keys(),
-            columns=['auroc', 'aupr', 'fpr95'],
+    def compute_ood_classification_results(
+        self, 
+        metric_name: str,
+        finetuned: bool,
+        **mask_kwargs,
+    ):
+        print(f'compute ood scores by {metric_name}...')
+        self.model = self._initialize_model(finetuned=finetuned)
+        self.feature_extractor = FeatureExtractor(
+            model=self.model,
+            layer_name=self.config.model.layer_name.penultimate,
         )
-        results = {
-            'in_dist_dataset': self.in_dist_dataset_name,
-            'out_of_dist_dataset': self.out_of_dist_dataset_name,
-            'scores': scores
-        }
+        self.feature_extractor.hook()
 
-        ood_score_filename = f'{self.model_name}_{self.in_dist_dataset_name}_vs_{self.out_of_dist_dataset_name}.csv'
-        ood_score_path = self.ood_root / ood_score_filename
-        result_df.to_csv(ood_score_path, sep=',')
-        return results
+        metric = self._init_metric(metric_name, **mask_kwargs)
+        test_y, ood_scores, id_ood_scores, ood_ood_scores = compute_ood_scores(
+            metric=metric,
+            in_dist_dataloader=self.id_test_dataloader,
+            out_of_dist_dataloader=self.ood_test_dataloader,
+        )
+        _, _, auroc_score = auroc(test_y, ood_scores)
+        _, _, aupr_score = aupr(test_y, ood_scores)
+        fpr95 = fpr_at_95_tpr(test_y, ood_scores)
+        
+        return auroc_score, aupr_score, fpr95
