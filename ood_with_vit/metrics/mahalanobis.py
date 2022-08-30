@@ -21,12 +21,17 @@ class Mahalanobis(Metric):
         model: torch.nn.Module,
         id_dataloader: DataLoader,
         feature_extractor: Optional[object] = None,
+        _precomputed_statistics: Optional[object] = None,
     ):
         super().__init__(config, model)
         
         self.trainloader = id_dataloader
         self.feature_extractor = feature_extractor
-        self.sample_means, self.precision = self._compute_statistics()
+        if _precomputed_statistics is None:
+            self.statistics = self._compute_statistics()
+        else:
+            self.statistics = _precomputed_statistics
+        self.sample_means, self.precision = self.statistics
     
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -37,8 +42,8 @@ class Mahalanobis(Metric):
         """
         self.model.eval()
         
-        # group_lasso = EmpiricalCovariance(assume_centered=False)
-        group_lasso = ShrunkCovariance(assume_centered=False)
+        group_lasso = EmpiricalCovariance(assume_centered=False)
+        # group_lasso = ShrunkCovariance(assume_centered=False)
         
         with torch.no_grad():
             # compute penultimate features of each class

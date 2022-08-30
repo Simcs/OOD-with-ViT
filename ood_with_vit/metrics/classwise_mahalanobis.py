@@ -21,12 +21,17 @@ class ClasswiseMahalanobis(Metric):
         model: torch.nn.Module,
         id_dataloader: DataLoader,
         feature_extractor: Optional[object] = None,
+        _precomputed_statistics: Optional[object] = None,
     ):
         super().__init__(config, model)
         
         self.trainloader = id_dataloader
         self.feature_extractor = feature_extractor
-        self.sample_means, self.precisions = self._compute_statistics()
+        if _precomputed_statistics is None:
+            self.statistics = self._compute_statistics()
+        else:
+            self.statistics = _precomputed_statistics
+        self.sample_means, self.precisions = self.statistics
     
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """

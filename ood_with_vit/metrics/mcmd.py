@@ -17,9 +17,9 @@ from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
 from . import MaskMetric
 
 
-class DMD(MaskMetric):
+class MCMD(MaskMetric):
     """
-    Implementation of Difference of Max Logit metric.
+    Implementation of Masked Classwise Mahalanobis Distance
     """
     
     def __init__(
@@ -33,6 +33,7 @@ class DMD(MaskMetric):
         mask_threshold: float = 0.9,
         head_fusion: str = 'max',
         discard_ratio: float = 0.9,
+        _precomputed_statistics: Optional[object] = None,
     ):
         super().__init__(
             config=config, 
@@ -46,7 +47,11 @@ class DMD(MaskMetric):
 
         self.trainloader = id_dataloader
         self.feature_extractor = feature_extractor
-        self.sample_means, self.precision = self._compute_statistics()
+        if _precomputed_statistics is None:
+            self.statistics = self._compute_statistics()
+        else:
+            self.statistics = _precomputed_statistics
+        self.sample_means, self.precisions = self.statistics
         self.attention_masking.hook()
 
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -56,11 +61,7 @@ class DMD(MaskMetric):
             sample_class_man:
             precision
         """
-        self.model.eval()
-        
-        # group_lasso = EmpiricalCovariance(assume_centered=False)
-        group_lasso = ShrunkCovariance(assume_centered=False)
-        
+        self.model.eval()        
         with torch.no_grad():
             # compute penultimate features of each class
             class_to_features = [[] for _ in range(self.num_class)]
@@ -82,18 +83,20 @@ class DMD(MaskMetric):
             sample_means = [None] * self.num_class
             for i, feat in enumerate(class_to_features):
                 sample_means[i] = torch.mean(feat, dim=0)
-            
-            # compute covariance matrix of penultimate features
-            X = []
+
+            # compute covariance matrix of each class
+            precisions = []
             for list_feature, cls_mean in zip(class_to_features, sample_means):
-                X.append(list_feature - cls_mean)
-            X = torch.cat(X, dim=0).numpy()
-            group_lasso.fit(X)
-            precision = torch.from_numpy(group_lasso.precision_).float()
-                
-            print('covariance norm:', np.linalg.norm(group_lasso.precision_))
+                # group_lasso = EmpiricalCovariance(assume_centered=False)
+                group_lasso = ShrunkCovariance(assume_centered=False)
+                X = (list_feature - cls_mean).numpy()
+                group_lasso.fit(X)
+                precision = torch.from_numpy(group_lasso.precision_).float()
+                precisions.append(precision)
+            norms = [np.linalg.norm(precision) for precision in precisions]
+            print('covairance norms:', norms)
         
-        return sample_means, precision
+        return sample_means, precisions
 
     def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
@@ -116,28 +119,33 @@ class DMD(MaskMetric):
         return original_max_logit - masked_max_logit
     
     def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
+        """
+        Compute DML based out-of-distrbution score given a test data.
+        """
         self.model.eval()
         with torch.no_grad():
-            total_mmd = []
+            self.attention_masking.switch_status('normal')
+            img = self.transform_test(Image.fromarray(img)).to(self.device)
+            original_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
+            original_max_logit, original_pred = original_logit.max(dim=1)
+
+            self.attention_masking.switch_status('masking')
+            self.attention_masking.generate_mask(img)
+            masked_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
+            masked_max_logit, masked_pred = masked_logit.max(dim=1)
+
+        original_max_logit, original_pred = original_max_logit.item(), original_pred.item()
+        masked_max_logit, masked_pred = masked_max_logit.item(), masked_pred.item()
+        return original_max_logit - masked_max_logit
+    
+    def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
+        self.model.eval()
+        with torch.no_grad():
+            total_mcmd = []
             for x, y in tqdm(dataloader):
-                original_gaussian_scores = []
                 x, y = x.to(self.device), y.to(self.device)
+
                 self.attention_masking.disable_masking()
-                original_features = compute_penultimate_features(
-                    config=self.config, 
-                    model=self.model, 
-                    imgs=x,
-                    feature_extractor=self.feature_extractor
-                )
-
-                for sample_mean in self.sample_means:
-                    zero_f = original_features - sample_mean
-                    gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
-                    original_gaussian_scores.append(gau_term.view(-1, 1))
-            
-                original_gaussian_scores = torch.cat(original_gaussian_scores, dim=1)
-                original_mahalanobis_distances, _ = original_gaussian_scores.min(dim=1)
-
                 self.attention_masking.generate_masks(x)
 
                 self.attention_masking.enable_masking()
@@ -149,16 +157,13 @@ class DMD(MaskMetric):
                     feature_extractor=self.feature_extractor
                 )
 
-                for sample_mean in self.sample_means:
+                for sample_mean, prec in zip(self.sample_means, self.precisions):
                     zero_f = masked_features - sample_mean
-                    gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                    gau_term = torch.mm(torch.mm(zero_f, prec), zero_f.t()).diag()
                     masked_gaussian_scores.append(gau_term.view(-1, 1))
-        
                 masked_gaussian_scores = torch.cat(masked_gaussian_scores, dim=1)
                 masked_mahalanobis_distances, _ = masked_gaussian_scores.min(dim=1)
 
-                for original_dist, masked_dist in zip(original_mahalanobis_distances, masked_mahalanobis_distances):
-                    original_dist, masked_dist = original_dist.item(), masked_dist.item()
-                    total_dmd.append(original_dist - masked_dist)
-
-        return total_dmd
+                total_mcmd.extend(masked_mahalanobis_distances.numpy())
+            
+        return total_mcmd

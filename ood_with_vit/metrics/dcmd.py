@@ -45,7 +45,7 @@ class DCMD(MaskMetric):
         )
         self.trainloader = id_dataloader
         self.feature_extractor = feature_extractor
-        self.sample_means, self.precision = self._compute_statistics()
+        self.sample_means, self.precisions = self._compute_statistics()
         self.attention_masking.hook()
 
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -55,11 +55,7 @@ class DCMD(MaskMetric):
             sample_class_man:
             precision
         """
-        self.model.eval()
-        
-        # group_lasso = EmpiricalCovariance(assume_centered=False)
-        group_lasso = ShrunkCovariance(assume_centered=False)
-        
+        self.model.eval()        
         with torch.no_grad():
             # compute penultimate features of each class
             class_to_features = [[] for _ in range(self.num_class)]
@@ -81,18 +77,20 @@ class DCMD(MaskMetric):
             sample_means = [None] * self.num_class
             for i, feat in enumerate(class_to_features):
                 sample_means[i] = torch.mean(feat, dim=0)
-            
-            # compute covariance matrix of penultimate features
-            X = []
+
+            # compute covariance matrix of each class
+            precisions = []
             for list_feature, cls_mean in zip(class_to_features, sample_means):
-                X.append(list_feature - cls_mean)
-            X = torch.cat(X, dim=0).numpy()
-            group_lasso.fit(X)
-            precision = torch.from_numpy(group_lasso.precision_).float()
-                
-            print('covariance norm:', np.linalg.norm(group_lasso.precision_))
+                # group_lasso = EmpiricalCovariance(assume_centered=False)
+                group_lasso = ShrunkCovariance(assume_centered=False)
+                X = (list_feature - cls_mean).numpy()
+                group_lasso.fit(X)
+                precision = torch.from_numpy(group_lasso.precision_).float()
+                precisions.append(precision)
+            norms = [np.linalg.norm(precision) for precision in precisions]
+            print('covairance norms:', norms)
         
-        return sample_means, precision
+        return sample_means, precisions
 
     def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
@@ -129,13 +127,21 @@ class DCMD(MaskMetric):
                     feature_extractor=self.feature_extractor
                 )
 
-                for sample_mean in self.sample_means:
+                for sample_mean, prec in zip(self.sample_means, self.precisions):
                     zero_f = original_features - sample_mean
-                    gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                    gau_term = torch.mm(torch.mm(zero_f, prec), zero_f.t()).diag()
                     original_gaussian_scores.append(gau_term.view(-1, 1))
-            
+                    
                 original_gaussian_scores = torch.cat(original_gaussian_scores, dim=1)
-                original_mahalanobis_distances, preds = original_gaussian_scores.min(dim=1)
+                original_mahalanobis_distances, _ = original_gaussian_scores.min(dim=1)
+                    
+                # for sample_mean in self.sample_means:
+                #     zero_f = original_features - sample_mean
+                #     gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                #     original_gaussian_scores.append(gau_term.view(-1, 1))
+            
+                # original_gaussian_scores = torch.cat(original_gaussian_scores, dim=1)
+                # original_mahalanobis_distances, preds = original_gaussian_scores.min(dim=1)
 
                 self.attention_masking.generate_masks(x)
 
@@ -148,15 +154,26 @@ class DCMD(MaskMetric):
                     feature_extractor=self.feature_extractor
                 )
 
-                for sample_mean in self.sample_means:
+                for sample_mean, prec in zip(self.sample_means, self.precisions):
                     zero_f = masked_features - sample_mean
-                    gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                    gau_term = torch.mm(torch.mm(zero_f, prec), zero_f.t()).diag()
                     masked_gaussian_scores.append(gau_term.view(-1, 1))
-
                 masked_gaussian_scores = torch.cat(masked_gaussian_scores, dim=1)
-                for i, (original_dist, pred) in enumerate(zip(original_mahalanobis_distances, preds)):
-                    original_dist, pred = original_dist.item(), pred.item()
-                    cls_masked_distance = masked_gaussian_scores[i, pred].item()
-                    total_dcmd.append(original_dist - cls_masked_distance)
+                masked_mahalanobis_distances, _ = masked_gaussian_scores.min(dim=1)
+
+                for original_dist, masked_dist in zip(original_mahalanobis_distances, masked_mahalanobis_distances):
+                    original_dist, masked_dist = original_dist.item(), masked_dist.item()
+                    total_dcmd.append(original_dist - masked_dist)
+
+                # for sample_mean in self.sample_means:
+                #     zero_f = masked_features - sample_mean
+                #     gau_term = torch.mm(torch.mm(zero_f, self.precision), zero_f.t()).diag()
+                #     masked_gaussian_scores.append(gau_term.view(-1, 1))
+
+                # masked_gaussian_scores = torch.cat(masked_gaussian_scores, dim=1)
+                # for i, (original_dist, pred) in enumerate(zip(original_mahalanobis_distances, preds)):
+                #     original_dist, pred = original_dist.item(), pred.item()
+                #     cls_masked_distance = masked_gaussian_scores[i, pred].item()
+                #     total_dcmd.append(original_dist - cls_masked_distance)
 
         return total_dcmd

@@ -22,13 +22,18 @@ class SML(Metric):
         model: torch.nn.Module,
         id_dataloader: DataLoader,
         # feature_extractor: Optional[object] = None,
+        _precomputed_statistics: Optional[object] = None,
     ):
         super().__init__(config, model)
         
         self.trainloader = id_dataloader
         # self.feature_extractor = feature_extractor
-        self.max_logit_means, self.max_logit_stds = self._compute_statistics()
-    
+        if _precomputed_statistics is None:
+            self.statistics = self._compute_statistics()
+        else:
+            self.statistics = _precomputed_statistics
+        self.max_logit_means, self.max_logit_stds = self.statistics
+        
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute sample mean and precision (inverse of covariance)
