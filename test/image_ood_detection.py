@@ -66,7 +66,7 @@ mask_methods = ratio_methods + threshold_methods
 n_params = 20
 mask_ratios = [1 / n_params * i for i in range(n_params + 1)]
 mask_thresholds = [1 / n_params * i  for i in range(n_params + 1)]
-mask_thresholds = [0.0, 0.05, 0.1]
+mask_thresholds = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1]
 
 masking_params = []
 for method in ratio_methods:
