@@ -84,7 +84,6 @@ class ClasswiseMahalanobis(Metric):
         self.model.eval()
         with torch.no_grad():
             img = self.transform_test(Image.fromarray(img)).to(self.device)
-            print(self.feature_extractor)
             feature = compute_penultimate_features(
                 config=self.config, 
                 model=self.model, 
@@ -100,7 +99,6 @@ class ClasswiseMahalanobis(Metric):
             gaussian_scores = torch.cat(gaussian_scores, dim=1)
             mahalobis_distance, _ = gaussian_scores.min(dim=1)
             
-        
         return mahalobis_distance.item()
     
     def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:

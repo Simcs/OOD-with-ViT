@@ -47,12 +47,12 @@ class DML(MaskMetric):
         """
         self.model.eval()
         with torch.no_grad():
-            self.attention_masking.switch_status('normal')
+            self.attention_masking.disable_masking()
             img = self.transform_test(Image.fromarray(img)).to(self.device)
             original_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
             original_max_logit, original_pred = original_logit.max(dim=1)
 
-            self.attention_masking.switch_status('masking')
+            self.attention_masking.enable_masking()
             self.attention_masking.generate_mask(img)
             masked_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
             masked_max_logit, masked_pred = masked_logit.max(dim=1)
@@ -67,12 +67,12 @@ class DML(MaskMetric):
             total_dml = []
             for x, y in tqdm(dataloader):
                 x, y = x.to(self.device), y.to(self.device)
-                self.attention_masking.switch_status('normal')
+                self.attention_masking.disable_masking()
                 original_logits = compute_logits(self.config, self.model, x)
                 original_max_logits, original_preds = original_logits.max(dim=1)
 
                 self.attention_masking.generate_masks(x)
-                self.attention_masking.switch_status('masking')
+                self.attention_masking.enable_masking()
                 masked_logits = compute_logits(self.config, self.model, x)
                 masked_max_logits, masked_preds = masked_logits.max(dim=1)
         

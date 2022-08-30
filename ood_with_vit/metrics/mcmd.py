@@ -56,10 +56,7 @@ class MCMD(MaskMetric):
 
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Compute sample mean and precision (inverse of covariance)
-        return: 
-            sample_class_man:
-            precision
+        Compute sample mean and classwise precisions (inverse of covariance)
         """
         self.model.eval()        
         with torch.no_grad():
@@ -100,43 +97,33 @@ class MCMD(MaskMetric):
 
     def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
-        Compute DML based out-of-distrbution score given a test data.
+        Compute MCMD based out-of-distrbution score given a test data.
         """
         self.model.eval()
         with torch.no_grad():
-            self.attention_masking.switch_status('normal')
+            self.attention_masking.disable_masking()
             img = self.transform_test(Image.fromarray(img)).to(self.device)
-            original_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
-            original_max_logit, original_pred = original_logit.max(dim=1)
+            
+            self.attention_masking.disable_masking()
+            self.attention_masking.generate_masks(img.unsqueeze(0))
+            
+            self.attention_masking.enable_masking()
+            masked_gaussian_scores = []
+            masked_features = compute_penultimate_features(
+                config=self.config, 
+                model=self.model, 
+                imgs=img.unsqueeze(0),
+                feature_extractor=self.feature_extractor
+            )
 
-            self.attention_masking.switch_status('masking')
-            self.attention_masking.generate_mask(img)
-            masked_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
-            masked_max_logit, masked_pred = masked_logit.max(dim=1)
+            for sample_mean, prec in zip(self.sample_means, self.precisions):
+                zero_f = masked_features - sample_mean
+                gau_term = torch.mm(torch.mm(zero_f, prec), zero_f.t()).diag()
+                masked_gaussian_scores.append(gau_term.view(-1, 1))
+            masked_gaussian_scores = torch.cat(masked_gaussian_scores, dim=1)
+            masked_mahalanobis_distance, _ = masked_gaussian_scores.min(dim=1)
 
-        original_max_logit, original_pred = original_max_logit.item(), original_pred.item()
-        masked_max_logit, masked_pred = masked_max_logit.item(), masked_pred.item()
-        return original_max_logit - masked_max_logit
-    
-    def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
-        """
-        Compute DML based out-of-distrbution score given a test data.
-        """
-        self.model.eval()
-        with torch.no_grad():
-            self.attention_masking.switch_status('normal')
-            img = self.transform_test(Image.fromarray(img)).to(self.device)
-            original_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
-            original_max_logit, original_pred = original_logit.max(dim=1)
-
-            self.attention_masking.switch_status('masking')
-            self.attention_masking.generate_mask(img)
-            masked_logit = compute_logits(self.config, self.model, img.unsqueeze(0))
-            masked_max_logit, masked_pred = masked_logit.max(dim=1)
-
-        original_max_logit, original_pred = original_max_logit.item(), original_pred.item()
-        masked_max_logit, masked_pred = masked_max_logit.item(), masked_pred.item()
-        return original_max_logit - masked_max_logit
+        return masked_mahalanobis_distance.item()
     
     def compute_dataset_ood_score(self, dataloader: DataLoader) -> List[float]:
         self.model.eval()

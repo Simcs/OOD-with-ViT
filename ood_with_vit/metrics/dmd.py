@@ -52,9 +52,6 @@ class DMD(MaskMetric):
     def _compute_statistics(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute sample mean and precision (inverse of covariance)
-        return: 
-            sample_class_man:
-            precision
         """
         self.model.eval()
         
@@ -97,7 +94,7 @@ class DMD(MaskMetric):
 
     def compute_img_ood_score(self, img: np.ndarray) -> float:
         """
-        Compute DML based out-of-distrbution score given a test data.
+        Compute DMD based out-of-distrbution score given a test data.
         """
         self.model.eval()
         with torch.no_grad():
