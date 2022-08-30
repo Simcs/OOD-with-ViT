@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 import random
+import numpy as np
+
 import torch
 from torch.utils.data import DataLoader
 
@@ -52,6 +54,12 @@ def compute_penultimate_features(
     return penultimate_features
 
 
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
 def compute_logits(
     config: ConfigDict,
     model: torch.nn.Module,
@@ -71,6 +79,9 @@ def compute_ood_scores(
     in_dist_dataloader: DataLoader,
     out_of_dist_dataloader: DataLoader,
 ):
+    # seed = 3456
+    # set_seed(seed)
+    # print(f'set seed {seed}')
     test_y, ood_scores = [], []
     print('processing in-distribution samples...')
     id_ood_scores = metric.compute_dataset_ood_score(in_dist_dataloader)
@@ -84,3 +95,4 @@ def compute_ood_scores(
     ood_scores = id_ood_scores + ood_ood_scores
 
     return test_y, ood_scores, id_ood_scores, ood_ood_scores
+
