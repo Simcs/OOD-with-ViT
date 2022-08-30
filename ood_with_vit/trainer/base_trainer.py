@@ -1,4 +1,5 @@
 from typing import Tuple
+from tqdm import tqdm
 
 from ml_collections.config_dict import ConfigDict
 
@@ -71,7 +72,7 @@ class BaseTrainer:
         
         total_train_loss, n_correct, n_total = 0, 0, 0
         
-        for batch_idx, (x, y) in enumerate(self.trainloader):
+        for batch_idx, (x, y) in enumerate(tqdm(self.trainloader)):
             x, y = x.to(self.device), y.to(self.device)
             # Train with amp
             with torch.cuda.amp.autocast(enabled=self.config.train.use_amp):
@@ -98,7 +99,7 @@ class BaseTrainer:
         
         total_test_loss, n_correct, n_total = 0, 0, 0
         with torch.no_grad():
-            for batch_idx, (x, y) in enumerate(self.testloader):
+            for batch_idx, (x, y) in enumerate(tqdm(self.testloader)):
                 x, y = x.to(self.device), y.to(self.device)
                 outputs = self.model(x)
                 loss = self.criterion(outputs, y)
