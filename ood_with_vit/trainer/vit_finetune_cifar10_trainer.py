@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import timm
 from ml_collections.config_dict import ConfigDict
 
 import torch
@@ -20,9 +21,8 @@ class ViT_Finetune_CIFAR10_Trainer(BaseTrainer):
     def _create_model(self) -> nn.Module:    
         repo = self.config.model.repo
         model_name = self.config.model.pretrained_model
-        model = torch.hub.load(
-            repo_or_dir=repo,
-            model=model_name,
+        model = timm.create_model(
+            model_name=model_name,
             pretrained=True,
         )
         n_class = self.config.dataset.n_class
