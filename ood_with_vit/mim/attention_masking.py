@@ -85,16 +85,7 @@ class AttentionMaskingHooker:
         assert self.masks is not None, 'mask should have been generated'
         masks = torch.as_tensor(self.masks).to(self.device)
         w = masks.view(masks.size(0), -1).unsqueeze(-1)
-        # w = masks.flatten(1).unsqueeze(-1)
-        # print('w:', w.shape)
-        # mask_idx = torch.nonzero(w[0, :, 0] == 1).squeeze()
-        # print(mask_idx, mask_idx.shape)
-        # print('before mask:', output.shape, w.shape)
-        # print(output[0, mask_idx[0], :])
         output = output * (1 - w)
-        # print(output.shape, w.shape)
-        # print('after mask:', output.shape)
-        # print(output[0, mask_idx[0], :])
         return output
 
     def mask_image(self, imgs):
@@ -102,7 +93,6 @@ class AttentionMaskingHooker:
         masks = torch.as_tensor(self.masks).to(self.device)
         masks = masks.unsqueeze(1) # add channel axis
         masks = F.interpolate(masks, size=(h, w))
-        # masks = masks.expand(b, c, h, w)
         return imgs * (1 - masks)
     
     def generate_masks(self, imgs):
