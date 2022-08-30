@@ -6,29 +6,67 @@ import yaml
 from pprint import pprint
 
 from ml_collections import ConfigDict
+from ood_with_vit.metrics import metric
 
 from ood_with_vit.ood_classifier import Image_OOD_Classifier
 
 
-datasets = ['CIFAR10', 'CIFAR100', 'SVHN']
-pretrain_only_metrics = ['Mahalanobis', 'ClasswiseMahalanobis', 'DMD', 'DCMD']
+id_datasets = ['CIFAR10', 'CIFAR100']
+ood_datasets = ['CIFAR10', 'CIFAR100', 'SVHN', 'TinyImageNet', 'DTD', 'Places365']
+ood_datasets = ['CIFAR10', 'CIFAR100', 'SVHN', 'TinyImageNet', 'DTD']
+ood_datasets = ['CIFAR100']
+pretrain_only_metrics = ['Mahalanobis', 'ClasswiseMahalanobis', 'DMD', 'DCMD', 'MCMD']
 baseline_metrics = ['MSP', 'Mahalanobis', 'ClasswiseMahalanobis', 'SML']
-mask_metrics = ['DML', 'DCL', 'DMD', 'DCMD']
-mask_metrics = ['DMD']
-mask_metrics = ['DCMD']
+mask_metrics = ['DML', 'DCL', 'DMD', 'DCMD', 'MCMD']
+mask_metrics = ['MCMD']
 models_to_configs = {
-    'deit-tiny': {
-        'CIFAR10': './configs/deit_tiny-pretrained-cifar10.yaml',
-        'CIFAR100': './configs/deit_tiny-pretrained-cifar100.yaml',
-    }
+    # 'deit-tiny': {
+    #     'CIFAR10': './configs/deit_tiny-pretrained-cifar10.yaml',
+    #     'CIFAR100': './configs/deit_tiny-pretrained-cifar100.yaml',
+    # },
+    # 'deit-small': {
+    #     'CIFAR10': './configs/deit_small-pretrained-cifar10.yaml',
+    #     'CIFAR100': './configs/deit_small-pretrained-cifar100.yaml',
+    # },
+    # 'deit-base': {
+    #     'CIFAR10': './configs/deit_base-pretrained-cifar10.yaml',
+    #     'CIFAR100': './configs/deit_base-pretrained-cifar100.yaml',
+    # },
+    'vit-tiny': {
+        'CIFAR10': './configs/vit_tiny-pretrained-cifar10.yaml',
+        'CIFAR100': './configs/vit_tiny-pretrained-cifar100.yaml',
+    },
+    'vit-small': {
+        'CIFAR10': './configs/vit_small-pretrained-cifar10.yaml',
+        'CIFAR100': './configs/vit_small-pretrained-cifar100.yaml',
+    },
+    'vit-base': {
+        'CIFAR10': './configs/vit_base-pretrained-cifar10.yaml',
+        'CIFAR100': './configs/vit_base-pretrained-cifar100.yaml',
+    },
+    # 'vit-tiny-in21k': {
+    #     'CIFAR10': './configs/vit_tiny_in21k-pretrained-cifar10.yaml',
+    #     'CIFAR100': './configs/vit_tiny_in21k-pretrained-cifar100.yaml',
+    # },
+    # 'vit-small-in21k': {
+    #     'CIFAR10': './configs/vit_small_in21k-pretrained-cifar10.yaml',
+    #     'CIFAR100': './configs/vit_small_in21k-pretrained-cifar100.yaml',
+    # },
+    # 'vit-base-in21k': {
+    #     'CIFAR10': './configs/vit_base_in21k-pretrained-cifar10.yaml',
+    #     'CIFAR100': './configs/vit_base_in21k-pretrained-cifar100.yaml',
+    # },
 }
 
 ratio_methods = ['top_ratio', 'bottom_ratio', 'random']
+ratio_methods = []
 threshold_methods = ['gt_threshold', 'lt_threshold']
+threshold_methods = ['lt_threshold']
 mask_methods = ratio_methods + threshold_methods
 n_params = 20
 mask_ratios = [1 / n_params * i for i in range(n_params + 1)]
 mask_thresholds = [1 / n_params * i  for i in range(n_params + 1)]
+mask_thresholds = [0.0, 0.05, 0.1]
 
 masking_params = []
 for method in ratio_methods:
@@ -47,6 +85,25 @@ for method in threshold_methods:
             'mask_threshold': threshold,
         })
 
+cached_metrics = ['Mahalanobis', 'ClasswiseMahalanobis', 'SML', 'MCMD']
+statistics = {
+    model_name: {
+        id_dataset_name: {
+            metric_name: None for metric_name in cached_metrics
+        } for id_dataset_name in id_datasets
+    } for model_name in models_to_configs.keys()
+}
+
+def get_precomputed_statistics(model_name, id_dataset_name, metric_name):
+    stat = statistics[model_name][id_dataset_name]
+    if metric_name in stat:
+        return stat[metric_name]
+    return None
+
+def cache_statistics(model_name, id_dataset_name, metric_name, statistic):
+    stat = statistics[model_name][id_dataset_name]
+    if metric_name in stat:
+        stat[metric_name] = statistic
 
 def test_one(config, args):
     ood_classifier = Image_OOD_Classifier(
@@ -60,12 +117,12 @@ def test_one(config, args):
 
 
 def test_baseline_metrics(args):
-    ood_root = Path('./result') / 'ood_scores'
+    ood_root = Path('./result') / 'ood_scores' / 'baseline'
     ood_root.mkdir(parents=True, exist_ok=True)
     for model, configs in models_to_configs.items():
         print(f'processing model {model}...')
         for id_dataset_name, config_filename in configs.items():
-            for ood_dataset_name in datasets:
+            for ood_dataset_name in ood_datasets:
                 if id_dataset_name == ood_dataset_name:
                     continue
 
@@ -86,10 +143,14 @@ def test_baseline_metrics(args):
                         out_of_dist_dataset_name=ood_dataset_name,
                         log_dir=args.log_dir,       
                     )
+                    precomputed_statistics = get_precomputed_statistics(model, id_dataset_name, metric_name)
                     auroc_score, aupr_score, fpr95 = ood_classifier.compute_ood_classification_results(
                         metric_name=metric_name,
                         finetuned=args.finetuned,
+                        _precomputed_statistics=precomputed_statistics,
                     )
+                    if metric_name in cached_metrics:
+                        cache_statistics(model, id_dataset_name, metric_name, ood_classifier.metric.statistics)
                     result = [metric_name, auroc_score, aupr_score, fpr95]
                     results.append(result)
                     print(f'result: auroc({auroc_score:.4f}), aupr({aupr_score:.4f}), fpr95({fpr95:.4f})\n')
@@ -105,15 +166,16 @@ def test_baseline_metrics(args):
                 ood_score_filename = f'{model_name}_{id_name}_vs_{ood_name}_{finetuned}_baseline.csv'
                 ood_score_path = ood_root / ood_score_filename
                 result_df.to_csv(ood_score_path, sep=',')
+                print(f'saved file {ood_score_path}!')
 
 
 def test_mask_metrics(args):
-    ood_root = Path('./result') / 'ood_scores'
+    ood_root = Path('./result') / 'ood_scores' / 'mask'
     ood_root.mkdir(parents=True, exist_ok=True)
     for model, configs in models_to_configs.items():
         print(f'processing model {model}...')
         for id_dataset_name, config_filename in configs.items():
-            for ood_dataset_name in datasets:
+            for ood_dataset_name in ood_datasets:
                 if id_dataset_name == ood_dataset_name:
                     continue
 
@@ -139,13 +201,17 @@ def test_mask_metrics(args):
                         mask_method = masking_param['mask_method']
                         mask_ratio = masking_param['mask_ratio']
                         mask_threshold = masking_param['mask_threshold']
+                        precomputed_statistics = get_precomputed_statistics(model, id_dataset_name, metric_name)
                         auroc_score, aupr_score, fpr95 = ood_classifier.compute_ood_classification_results(
                             metric_name=metric_name,
                             finetuned=args.finetuned,
                             mask_method=mask_method,
                             mask_ratio=mask_ratio,
                             mask_threshold=mask_threshold,
+                            _precomputed_statistics=precomputed_statistics,
                         )
+                        if metric_name in cached_metrics:
+                            cache_statistics(model, id_dataset_name, metric_name, ood_classifier.metric.statistics)
                         result = [metric_name, mask_method, mask_ratio, mask_threshold, \
                             auroc_score, aupr_score, fpr95]
                         results.append(result)
@@ -162,6 +228,7 @@ def test_mask_metrics(args):
                     ood_score_filename = f'{model_name}_{id_name}_vs_{ood_name}_{finetuned}_{metric_name}_mask.csv'
                     ood_score_path = ood_root / ood_score_filename
                     result_df.to_csv(ood_score_path, sep=',')
+                    print(f'saved file {ood_score_path}!')
 
 
 
