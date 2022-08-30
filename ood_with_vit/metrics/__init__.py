@@ -7,4 +7,5 @@ from .dcl import DCL
 from .dml import DML
 from .dmd import DMD
 from .dcmd import DCMD
+from .mmd import MMD
 from .mcmd import MCMD
