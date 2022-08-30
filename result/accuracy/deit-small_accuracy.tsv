@@ -1,0 +1,3 @@
+	model	dataset	accuracy
+0	deit-small	CIFAR10	98.02
+1	deit-small	CIFAR100	88.32

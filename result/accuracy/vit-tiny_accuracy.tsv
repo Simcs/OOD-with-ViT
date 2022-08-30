@@ -1,0 +1,3 @@
+	model	dataset	accuracy
+0	vit-tiny	CIFAR10	97.83
+1	vit-tiny	CIFAR100	86.11

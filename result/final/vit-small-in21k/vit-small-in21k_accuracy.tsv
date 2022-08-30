@@ -1,0 +1,3 @@
+	model	dataset	accuracy
+0	vit-small-in21k	CIFAR10	98.72
+1	vit-small-in21k	CIFAR100	91.96

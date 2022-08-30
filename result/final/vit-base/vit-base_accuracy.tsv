@@ -1,0 +1,3 @@
+	model	dataset	accuracy
+0	vit-base	CIFAR10	98.8
+1	vit-base	CIFAR100	92.12

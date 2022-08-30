@@ -1,0 +1,2 @@
+,metric,mask_method,mask_ratio,mask_threshold,auroc_score,aupr_score,fpr95
+0,MCMD,lt_threshold,,0.0,0.9860983476686284,0.9854473528777407,0.07180851063829788

@@ -1,0 +1,3 @@
+,metric,auroc_score,aupr_score,fpr95
+0,Mahalanobis,0.41392236000000004,0.429904988685404,0.9362
+1,ClasswiseMahalanobis,0.53234762,0.4976606132750319,0.8725
