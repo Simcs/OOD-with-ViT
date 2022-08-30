@@ -21,15 +21,18 @@ dataset:
   root: ./data
   n_class: 10
   mean: [0.4914, 0.4822, 0.4465]
-  std: [0.2023, 0.1994, 0.2010]
+  std: [0.2470, 0.2435, 0.2616]
 
 optimizer:
   name: adamw
-  base_lr: 0.00005
+  base_lr: 0.0001
   weight_decay: 0.0001
 
 scheduler: 
-  name: cosine
+  name: cosine_with_hard_restarts_with_warmup
+  warmup_steps: 5
+  num_training_steps: 100
+  num_cycles: 3
 
 train:
   batch_size: 512
@@ -38,4 +41,4 @@ train:
   use_amp: False
 
 eval:
-  batch_size: 100
+  batch_size: 256

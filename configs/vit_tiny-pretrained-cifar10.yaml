@@ -1,9 +1,9 @@
-summary: deit_tiny-pretrained-cifar100
+summary: vit_tiny-pretrained-cifar10
 model:
-  name: deit-tiny
+  name: vit-tiny
   pretrained: True
-  pretrained_model: deit_tiny_patch16_224
-  repo: facebookresearch/deit:main
+  pretrained_model: vit_tiny_patch16_224
+  repo: pytorch/vision
   img_size: 224
   patch_size: 16
   dim_head: 192
@@ -17,11 +17,11 @@ model:
     attention: attn_drop
 
 dataset:
-  name: CIFAR100
+  name: CIFAR10
   root: ./data
-  n_class: 100
-  mean: [0.5071, 0.4867, 0.4408]
-  std: [0.2675, 0.2565, 0.2761]
+  n_class: 10
+  mean: [0.4914, 0.4822, 0.4465]
+  std: [0.2470, 0.2435, 0.2616]
 
 optimizer:
   name: adamw
@@ -31,14 +31,14 @@ optimizer:
 scheduler: 
   name: cosine_with_hard_restarts_with_warmup
   warmup_steps: 5
-  num_training_steps: 100
+  num_training_steps: 95
   num_cycles: 3
-  
+
 train:
   batch_size: 512
   n_epochs: 100
   log_epoch: 10
   use_amp: False
-  
+
 eval:
   batch_size: 256

@@ -1,8 +1,8 @@
-summary: deit_tiny-pretrained-cifar100
+summary: deit_small-pretrained-cifar100
 model:
-  name: deit-tiny
+  name: deit-small
   pretrained: True
-  pretrained_model: deit_tiny_patch16_224
+  pretrained_model: deit_small_patch16_224
   repo: facebookresearch/deit:main
   img_size: 224
   patch_size: 16
@@ -31,7 +31,7 @@ optimizer:
 scheduler: 
   name: cosine_with_hard_restarts_with_warmup
   warmup_steps: 5
-  num_training_steps: 100
+  num_training_steps: 95
   num_cycles: 3
   
 train:

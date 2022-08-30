@@ -1,9 +1,9 @@
-summary: deit_tiny-pretrained-cifar100
+summary: vit_small_in21k-pretrained-cifar100
 model:
-  name: deit-tiny
+  name: vit-small-in21k
   pretrained: True
-  pretrained_model: deit_tiny_patch16_224
-  repo: facebookresearch/deit:main
+  pretrained_model: vit_small_patch16_224_in21k
+  repo: pytorch/vision
   img_size: 224
   patch_size: 16
   dim_head: 192

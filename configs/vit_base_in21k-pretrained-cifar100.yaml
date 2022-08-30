@@ -1,9 +1,9 @@
-summary: deit_tiny-pretrained-cifar100
+summary: vit_base_in21k-pretrained-cifar100
 model:
-  name: deit-tiny
+  name: vit-base-in21k
   pretrained: True
-  pretrained_model: deit_tiny_patch16_224
-  repo: facebookresearch/deit:main
+  pretrained_model: vit_base_patch16_224_in21k
+  repo: pytorch/vision
   img_size: 224
   patch_size: 16
   dim_head: 192
@@ -25,7 +25,7 @@ dataset:
 
 optimizer:
   name: adamw
-  base_lr: 0.0001
+  base_lr: 0.00005
   weight_decay: 0.0001
 
 scheduler: 
@@ -35,7 +35,7 @@ scheduler:
   num_cycles: 3
   
 train:
-  batch_size: 512
+  batch_size: 128
   n_epochs: 100
   log_epoch: 10
   use_amp: False
