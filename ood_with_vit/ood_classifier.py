@@ -1,25 +1,29 @@
-from typing import Tuple
+from typing import Optional, Tuple
 from collections import OrderedDict
 from pathlib import Path
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 import torchvision.transforms as transforms
-from torchvision.datasets import CIFAR10, CIFAR100, SVHN
+from torchvision.datasets import CIFAR10, CIFAR100, SVHN, LSUN, Places365
+from torchvision.datasets import ImageFolder
 
 from ml_collections import ConfigDict
+import timm
 
 from ood_with_vit.models.vit import ViT
+from ood_with_vit.datasets.dtd import DTD
 from ood_with_vit.metrics import MSP, Mahalanobis, ClasswiseMahalanobis, SML
-from ood_with_vit.metrics import DCL, DML, DMD, DCMD
+from ood_with_vit.metrics import DCL, DML, DMD, DCMD, MCMD
 from ood_with_vit.utils import compute_ood_scores
 from ood_with_vit.utils.ood_metrics import auroc, aupr, fpr_at_95_tpr
 from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
 
 
-DATASETS = ['CIFAR10', 'CIFAR100', 'SVHN']
+DATASETS = ['CIFAR10', 'CIFAR100', 'SVHN', 'LSUN', 'TinyImageNet', 'DTD', 'Places365']
 
 class Image_OOD_Classifier:
 
@@ -54,13 +58,16 @@ class Image_OOD_Classifier:
         img_size = self.config.model.img_size
 
         self.transform_test = transforms.Compose([
-            transforms.Resize(img_size),
+            transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             transforms.Normalize(dataset_mean, dataset_std),
         ])
 
         # create model and test dataloaders
         self.id_test_dataloader, self.ood_test_dataloader = self._create_dataloaders()
+
+        self.model = None
+        self.feature_extractor = None
     
     def _initialize_model(self, finetuned: bool = True) -> torch.nn.Module:
         summary = self.config.summary
@@ -69,17 +76,15 @@ class Image_OOD_Classifier:
         if self.config.model.pretrained:
             if finetuned:
                 print('initialize finetuned model...')
-                model = torch.hub.load(
-                    repo_or_dir=self.config.model.repo,
-                    model=self.config.model.pretrained_model,
+                model = timm.create_model(
+                    model_name=self.config.model.pretrained_model,
                     pretrained=False,
                 )
                 model.head = nn.Linear(model.head.in_features, n_class)
             else:
                 print('initialize pretrained-only model...')
-                model = torch.hub.load(
-                    repo_or_dir=self.config.model.repo,
-                    model=self.config.model.pretrained_model,
+                model = timm.create_model(
+                    model_name=self.config.model.pretrained_model,
                     pretrained=True,
                 )
         else:
@@ -98,6 +103,8 @@ class Image_OOD_Classifier:
         model = model.to(device=self.device)
 
         if finetuned:
+            # epoch = 50
+            # checkpoint = torch.load(self.checkpoint_path / f'{summary}_{epoch}.pt')
             checkpoint = torch.load(self.checkpoint_path / f'{summary}_best.pt')
 
             state_dict = checkpoint['model_state_dict']
@@ -127,7 +134,7 @@ class Image_OOD_Classifier:
                 download=False, 
                 transform=self.transform_test
             )
-        else:
+        elif dataset_name == 'SVHN':
             split = 'train' if train else 'test'
             dataset = SVHN(
                 root=dataset_root, 
@@ -135,6 +142,31 @@ class Image_OOD_Classifier:
                 download=True, 
                 transform=self.transform_test
             )
+        elif dataset_name == 'TinyImageNet':
+            split = 'train' if train else 'val'
+            imagenet_root = f'{dataset_root}/tiny-imagenet-200/{split}'
+            dataset = ImageFolder(
+                root=imagenet_root,
+                transform=self.transform_test,
+            )
+        elif dataset_name == 'DTD':
+            split = 'train' if train else 'val'
+            dataset = DTD(
+                root=dataset_root,
+                split=split,
+                download=True,
+                transform=self.transform_test,
+            )
+        elif dataset_name == 'Places365':
+            split = 'train-standard' if train else 'val'
+            dataset = Places365(
+                root=dataset_root,
+                split=split,
+                download=True,
+                transform=self.transform_test,
+            )
+        else:
+            raise ValueError(f'unsupported dataset {dataset_name}')
         return dataset
 
     def _create_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
@@ -154,7 +186,17 @@ class Image_OOD_Classifier:
         )
         return id_test_dataloader, ood_test_dataloader
     
-    def _init_metric(self, metric_name, **masking_kwargs):
+    def _init_metric(
+        self, 
+        metric_name: str, 
+        mask_method: str,
+        mask_ratio: float,
+        mask_threshold: float,
+        head_fusion: str = 'max',
+        discard_ratio: float = 0.9,
+        _precomputed_statistics: Optional[object] = None,
+    ):
+        # precomputed_statisitcs, **masking_kwargs):
         id_train_dataset = self._create_dataset(self.in_dist_dataset_name, train=True)
         id_train_dataloader = DataLoader(
             dataset=id_train_dataset,
@@ -165,29 +207,121 @@ class Image_OOD_Classifier:
         if metric_name == 'MSP':
             metric = MSP(self.config, self.model)
         elif metric_name == 'Mahalanobis':
-            metric = Mahalanobis(self.config, self.model, id_train_dataloader, self.feature_extractor)
+            metric = Mahalanobis(
+                self.config, 
+                self.model, 
+                id_train_dataloader, 
+                self.feature_extractor,
+                _precomputed_statistics,
+            )
         elif metric_name == 'ClasswiseMahalanobis':
-            metric = ClasswiseMahalanobis(self.config, self.model, id_train_dataloader, self.feature_extractor)
+            metric = ClasswiseMahalanobis(
+                self.config, 
+                self.model, 
+                id_train_dataloader, 
+                self.feature_extractor,
+                _precomputed_statistics,
+            )
         elif metric_name == 'SML':
-            metric = SML(self.config, self.model, id_train_dataloader)
+            metric = SML(
+                self.config, 
+                self.model, 
+                id_train_dataloader,
+                _precomputed_statistics,
+            )
         elif metric_name == 'DML':
-            metric = DML(self.config, self.model, **masking_kwargs)
+            metric = DML(
+                config=self.config, 
+                model=self.model, 
+                mask_method=mask_method,
+                mask_ratio=mask_ratio,
+                mask_threshold=mask_threshold,
+                head_fusion=head_fusion,
+                discard_ratio=discard_ratio,
+            )
         elif metric_name == 'DCL':
-            metric = DCL(self.config, self.model, **masking_kwargs)
+            metric = DCL(
+                config=self.config, 
+                model=self.model, 
+                mask_method=mask_method,
+                mask_ratio=mask_ratio,
+                mask_threshold=mask_threshold,
+                head_fusion=head_fusion,
+                discard_ratio=discard_ratio,
+            )
         elif metric_name == 'DMD':
-            metric = DMD(self.config, self.model, id_train_dataloader, self.feature_extractor, **masking_kwargs)
+            metric = DMD(
+                config=self.config, 
+                model=self.model, 
+                id_dataloader=id_train_dataloader, 
+                feature_extractor=self.feature_extractor, 
+                mask_method=mask_method,
+                mask_ratio=mask_ratio,
+                mask_threshold=mask_threshold,
+                head_fusion=head_fusion,
+                discard_ratio=discard_ratio,
+            )
         elif metric_name == 'DCMD':
-            metric = DCMD(self.config, self.model, id_train_dataloader, self.feature_extractor, **masking_kwargs)
+            metric = DCMD(
+                config=self.config, 
+                model=self.model, 
+                id_dataloader=id_train_dataloader, 
+                feature_extractor=self.feature_extractor, 
+                mask_method=mask_method,
+                mask_ratio=mask_ratio,
+                mask_threshold=mask_threshold,
+                head_fusion=head_fusion,
+                discard_ratio=discard_ratio,
+            )
+        elif metric_name == 'MCMD':
+            metric = MCMD(
+                config=self.config, 
+                model=self.model, 
+                id_dataloader=id_train_dataloader, 
+                feature_extractor=self.feature_extractor, 
+                mask_method=mask_method,
+                mask_ratio=mask_ratio,
+                mask_threshold=mask_threshold,
+                head_fusion=head_fusion,
+                discard_ratio=discard_ratio,
+                _precomputed_statistics=_precomputed_statistics,
+            )
         else:
             raise NotImplementedError('metric not supported')
         
         return metric
 
+    def compute_accuracy(self):
+        self.model = self._initialize_model(finetuned=True)
+        self.criterion = nn.CrossEntropyLoss()
+        self.model.eval()
+        
+        total_test_loss, n_correct, n_total = 0, 0, 0
+        with torch.no_grad():
+            for batch_idx, (x, y) in enumerate(tqdm(self.id_test_dataloader)):
+                x, y = x.to(self.device), y.to(self.device)
+                outputs = self.model(x)
+                loss = self.criterion(outputs, y)
+
+                total_test_loss += loss.item()
+                _, predicted = outputs.max(1)
+                n_total += y.size(0)
+                n_correct += predicted.eq(y).sum().item()
+        
+            avg_test_loss = total_test_loss / (batch_idx + 1)
+            test_accuracy = 100. * n_correct / n_total
+            print(f'Test Loss: {avg_test_loss:.3f} | Test Acc: {test_accuracy:.3f}% ({n_correct}/{n_total})')
+        
+        return total_test_loss, test_accuracy
+
     def compute_ood_classification_results(
         self, 
         metric_name: str,
         finetuned: bool,
-        **mask_kwargs,
+        mask_method: str = 'lt_threshold',
+        mask_ratio: float = 0.3,
+        mask_threshold: float = 0.1,
+        _precomputed_statistics = None,
     ):
         print(f'compute ood scores by {metric_name}...')
         self.model = self._initialize_model(finetuned=finetuned)
@@ -197,9 +331,17 @@ class Image_OOD_Classifier:
         )
         self.feature_extractor.hook()
 
-        metric = self._init_metric(metric_name, **mask_kwargs)
+        self.metric = self._init_metric(
+            metric_name=metric_name, 
+            mask_method=mask_method,
+            mask_ratio=mask_ratio,
+            mask_threshold=mask_threshold,
+            head_fusion='max',
+            discard_ratio=0.5,
+            _precomputed_statistics=_precomputed_statistics,
+        )
         test_y, ood_scores, id_ood_scores, ood_ood_scores = compute_ood_scores(
-            metric=metric,
+            metric=self.metric,
             in_dist_dataloader=self.id_test_dataloader,
             out_of_dist_dataloader=self.ood_test_dataloader,
         )
