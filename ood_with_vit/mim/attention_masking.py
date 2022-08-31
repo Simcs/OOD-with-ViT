@@ -94,8 +94,8 @@ class AttentionMaskingHooker:
         masks = masks.unsqueeze(1) # add channel axis
         masks = F.interpolate(masks, size=(h, w))
         return imgs * (1 - masks)
-    
-    def generate_masks(self, imgs):
+
+    def _compute_rollout_attention_map(self, imgs):
         self.attention_extractor.hook()
         attention_maps = compute_attention_maps(
             config=self.config,
@@ -105,8 +105,22 @@ class AttentionMaskingHooker:
         )
         self.attention_maps = attention_maps
         self.attention_extractor.remove_hooks()
-
         rollout_attention_map = self.attention_rollout.rollout(attention_maps)
+        return rollout_attention_map
+    
+    def generate_masks(self, imgs):
+        # self.attention_extractor.hook()
+        # attention_maps = compute_attention_maps(
+        #     config=self.config,
+        #     model=self.model,
+        #     imgs=imgs,
+        #     feature_extractor=self.attention_extractor,
+        # )
+        # self.attention_maps = attention_maps
+        # self.attention_extractor.remove_hooks()
+
+        # rollout_attention_map = self.attention_rollout.rollout(attention_maps)
+        rollout_attention_map = self._compute_rollout_attention_map(imgs)
         masks = self.compute_attention_masks(rollout_attention_map)
 
         self.masks = masks
