@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 from collections import OrderedDict
 from pathlib import Path
 from tqdm import tqdm
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -17,10 +18,11 @@ import timm
 from ood_with_vit.models.vit import ViT
 from ood_with_vit.datasets.dtd import DTD
 from ood_with_vit.metrics import MSP, Mahalanobis, ClasswiseMahalanobis, SML
-from ood_with_vit.metrics import DCL, DML, DMD, DCMD, MCMD
-from ood_with_vit.utils import compute_ood_scores
+from ood_with_vit.metrics import DCL, DML, DMD, DCMD, MMD, MCMD
+from ood_with_vit.utils import compute_ood_scores, compute_attention_maps
 from ood_with_vit.utils.ood_metrics import auroc, aupr, fpr_at_95_tpr
 from ood_with_vit.visualizer.feature_extractor import FeatureExtractor
+from ood_with_vit.mim.attention_masking import AttentionMaskingHooker
 
 
 DATASETS = ['CIFAR10', 'CIFAR100', 'SVHN', 'LSUN', 'TinyImageNet', 'DTD', 'Places365']
@@ -170,19 +172,21 @@ class Image_OOD_Classifier:
         return dataset
 
     def _create_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
-        id_test_dataset = self._create_dataset(self.in_dist_dataset_name, train=False)
+        self.id_test_dataset = self._create_dataset(self.in_dist_dataset_name, train=False)
         id_test_dataloader = DataLoader(
-            dataset=id_test_dataset,
+            dataset=self.id_test_dataset,
             batch_size=self.config.eval.batch_size,
             shuffle=False,
-            num_workers=8,
+            num_workers=4,
+            # num_workers=8,
         )
-        ood_test_dataset = self._create_dataset(self.out_of_dist_dataset_name, train=False)
+        self.ood_test_dataset = self._create_dataset(self.out_of_dist_dataset_name, train=False)
         ood_test_dataloader = DataLoader(
-            dataset=ood_test_dataset,
+            dataset=self.ood_test_dataset,
             batch_size=self.config.eval.batch_size,
             shuffle=False,
-            num_workers=8,
+            num_workers=4,
+            # num_workers=8,
         )
         return id_test_dataloader, ood_test_dataloader
     
@@ -202,7 +206,8 @@ class Image_OOD_Classifier:
             dataset=id_train_dataset,
             batch_size=self.config.train.batch_size,
             shuffle=False,
-            num_workers=8,
+            num_workers=4,
+            # num_workers=8,
         )
         if metric_name == 'MSP':
             metric = MSP(self.config, self.model)
@@ -273,6 +278,19 @@ class Image_OOD_Classifier:
                 head_fusion=head_fusion,
                 discard_ratio=discard_ratio,
             )
+        elif metric_name == 'MMD':
+            metric = MMD(
+                config=self.config, 
+                model=self.model, 
+                id_dataloader=id_train_dataloader, 
+                feature_extractor=self.feature_extractor, 
+                mask_method=mask_method,
+                mask_ratio=mask_ratio,
+                mask_threshold=mask_threshold,
+                head_fusion=head_fusion,
+                discard_ratio=discard_ratio,
+                _precomputed_statistics=_precomputed_statistics,
+            )
         elif metric_name == 'MCMD':
             metric = MCMD(
                 config=self.config, 
@@ -313,6 +331,63 @@ class Image_OOD_Classifier:
             print(f'Test Loss: {avg_test_loss:.3f} | Test Acc: {test_accuracy:.3f}% ({n_correct}/{n_total})')
         
         return total_test_loss, test_accuracy
+
+    def compute_attention_map_statistics(
+        self, 
+        finetuned: bool,
+        mask_method: str = 'lt_threshold',
+        mask_ratio: float = 0.3,
+        mask_threshold: float = 0.1,
+        head_fusion: str = 'max',
+        discard_ratio: float = 0.5,
+    ):
+        self.model = self._initialize_model(finetuned=finetuned)
+        self.model.eval()
+        attention_extractor = FeatureExtractor(
+            model=self.model,
+            layer_name=self.config.model.layer_name.attention,
+        )
+        attention_extractor.hook()
+        masking_hooker = AttentionMaskingHooker(
+            config=self.config,
+            model=self.model,
+            attention_extractor=attention_extractor,
+            patch_embedding_layer_name='patch_embed.norm',
+            mask_method=mask_method,
+            mask_ratio=mask_ratio,
+            mask_threshold=mask_threshold,
+            head_fusion=head_fusion,
+            discard_ratio=discard_ratio,
+        )
+
+        with torch.no_grad():
+            class_to_attention_maps = [[] for _ in range(len(self.id_test_dataset.classes))]
+            for x, y in tqdm(self.id_test_dataloader):
+                x, y = x.to(self.device), y.to(self.device)
+                rollout_attention_map = masking_hooker._compute_rollout_attention_map(x)
+                for attn_map, label in zip(rollout_attention_map, y):
+                    flattened_attn_map = attn_map.flatten()
+                    class_to_attention_maps[label.item()].extend(flattened_attn_map)
+        
+        class_statistics = []
+        for i, attn_maps in enumerate(class_to_attention_maps):
+            q1, median, q3 = np.percentile(attn_maps, [25, 50, 75])
+            mean = np.mean(attn_maps)
+            iqr = q3 - q1
+            wisk_min, wisk_max = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            actual_min, actual_max = np.min(attn_maps), np.max(attn_maps)
+            class_statistics.append({
+                'class_name': self.id_test_dataset.classes[i],
+                'mean': mean,
+                'actual_min': actual_min,
+                'wisk_min': wisk_min,
+                'q1': q1,
+                'median': median,
+                'q3': q3,
+                'wisk_max': wisk_max,
+                'actual_max': actual_max,
+            })
+        return class_statistics
 
     def compute_ood_classification_results(
         self, 
