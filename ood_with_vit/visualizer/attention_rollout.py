@@ -12,7 +12,19 @@ class ViTAttentionRollout:
         self.head_fusion = head_fusion
         self.discard_ratio = discard_ratio
         
-    def rollout(self, attentions: List[torch.Tensor]):
+    def spatial_rollout(self, attentions: List[torch.Tensor]):
+        return self.rollout(
+            attentions=attentions,
+            reshape_mask=True,
+        )
+        
+    def temporal_rollout(self, attentions: List[torch.Tensor]):
+        return self.rollout(
+            attentions=attentions,
+            reshape_mask=False,
+        )
+        
+    def rollout(self, attentions: List[torch.Tensor], reshape_mask=True):
         result = torch.eye(attentions[0].size(-1)).unsqueeze(0)
         result = result.repeat((attentions[0].size(0), 1, 1))
 
@@ -56,12 +68,13 @@ class ViTAttentionRollout:
         
         # Look at the total attention between the class token(CLS) and the image patches
         # mask.size() == [num_patches]
-        # print('final result:', result.shape)
         mask = result[:, 0, 1:]
-        width = int(mask.size(-1) ** 0.5)
-        mask = mask.reshape(-1, width, width).numpy()
+        if reshape_mask:
+            width = int(mask.size(-1) ** 0.5)
+            mask = mask.reshape(-1, width, width)
+        mask = mask.numpy()
         mask = mask / np.max(mask)
-        # print('mask:', mask.shape)
+        
         return mask
 
     def get_visualized_masks(self, img, mask):

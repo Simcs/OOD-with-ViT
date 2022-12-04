@@ -27,7 +27,6 @@ class AttentionMaskingHooker:
         model: nn.Module,
         attention_extractor: FeatureExtractor,
         patch_embedding_layer_name: str,
-        mask_mode: str,
         mask_method: str,
         mask_ratio: Optional[float] = None,
         mask_threshold: Optional[float] = None,
@@ -42,7 +41,6 @@ class AttentionMaskingHooker:
         self.model = model
         self.attention_extractor = attention_extractor
         self.patch_embedding_layer_name = patch_embedding_layer_name
-        self.mask_mode = mask_mode
         self.mask_method = mask_method
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.status = 'normal'

@@ -18,18 +18,18 @@ if TYPE_CHECKING:
 def compute_attention_maps(
     config: ConfigDict,
     model: torch.nn.Module,
-    imgs: torch.Tensor,
+    input: torch.Tensor,
     feature_extractor: Optional[FeatureExtractor] = None,
 ):
     # compute outputs and penultimate features detached and moved to cpu.
     if config.model.pretrained:
         assert feature_extractor is not None, 'feature_extractor must exist'
-        _ = feature_extractor(imgs)
+        _ = feature_extractor(input)
         attention_maps = []
         for attention_map in feature_extractor.features:
             attention_maps.append(attention_map)
     else:
-        _, _attention_maps = model(imgs)
+        _, _attention_maps = model(input)
         attention_maps = []
         for attention_map in _attention_maps:
             attention_maps.append(attention_map)
