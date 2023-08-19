@@ -2,7 +2,7 @@
 
 ["Attention Masking for Improved Near Out-of-Distribution Image Detection"](https://ieeexplore.ieee.org/abstract/document/10066676/?casa_token=PsE2q08RVUwAAAAA:q51R7tSpZ__2Y5_bIKj4bc9GTL__NSXrInvBvvMHywaP04hjkvh8j3WtsKv_sJAahyZohbgpog). BigComp2023 Oral.\
 Minho Sim, Jongwhoa Lee, and Ho-Jin Choi\
-Korea Advanced Institute of Science and Technology
+Korea Advanced Institute of Science and Technology, Daejeon, South Korea
 
 
 ## Overview
@@ -26,7 +26,7 @@ pip install .
 
 Visualization of the proposed method
 
-<img src="images/attention-masking.jpg" width="70%">
+<img src="images/attention-masking.jpg" width="80%">
 
 ## Citation
 
@@ -35,7 +35,7 @@ If you find this repository useful, please consider citing:
 ```
 @article{sim2023attention,
   title={Attention Masking for Improved Near Out-of-Distribution Image Detection},
-  author={Sim, Minho and Lee, Jongwhoa, and Choi, Ho-Jin},
+  author={Sim, Minho and Lee, Jongwhoa and Choi, Ho-Jin},
   journal={BigComp},
   year={2023},
 }
