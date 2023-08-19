@@ -26,7 +26,7 @@ pip install .
 
 Visualization of the proposed method
 
-<img src="images/attention-masking.jpg" width="100%">
+<img src="images/attention-masking.jpg" width="80%">
 
 ## Citation
 
