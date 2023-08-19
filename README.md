@@ -6,7 +6,7 @@ Korea Advanced Institute of Science and Technology, Daejeon, South Korea
 
 
 ## Overview
-<img src="images/overview2.PNG" width="90%">
+<img src="images/overview2.PNG" width="100%">
 
 ## Dependencies
 
@@ -26,7 +26,7 @@ pip install .
 
 Visualization of the proposed method
 
-<img src="images/attention-masking.jpg" width="80%">
+<img src="images/attention-masking.jpg" width="100%">
 
 ## Citation
 
