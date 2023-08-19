@@ -43,4 +43,5 @@ If you find this repository useful, please consider citing:
 
 ## Acknowledgement
 
-Our implementations of the vision transformer model and attention rollout algorithm are largely inspired by [vit-pytorch](https://github.com/lucidrains/vit-pytorch) and [vit-explain](https://github.com/jacobgil/vit-explain).
+Our implementations of the vision transformer model and attention rollout algorithm are largely inspired by
+[vit-pytorch](https://github.com/lucidrains/vit-pytorch) and [vit-explain](https://github.com/jacobgil/vit-explain).
